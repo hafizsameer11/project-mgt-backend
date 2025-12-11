@@ -45,6 +45,19 @@ RUN composer install --no-dev --no-interaction --optimize-autoloader
 # Copy Nginx config
 COPY docker/nginx.conf /etc/nginx/nginx.conf
 
+# Copy PHP-FPM pool config
+RUN mkdir -p /usr/local/etc/php-fpm.d
+COPY docker/php-fpm/www.conf /usr/local/etc/php-fpm.d/www.conf
+
+# Copy Supervisor config
+RUN mkdir -p /etc/supervisor/conf.d
+COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+
+# Create socket and log directories
+RUN mkdir -p /run /var/log/nginx && \
+    chown www-data:www-data /run && \
+    chown -R www-data:www-data /var/log/nginx
+
 # Entry Script
 COPY docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
