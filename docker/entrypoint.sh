@@ -15,10 +15,6 @@ php artisan view:cache || true
 chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache || true
 chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache || true
 
-# Create socket directory if it doesn't exist
-mkdir -p /run
-chown www-data:www-data /run
-
 echo "Starting services with supervisor..."
 
 # Start supervisor (which manages both PHP-FPM and Nginx)
