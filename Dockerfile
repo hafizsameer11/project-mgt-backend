@@ -1,5 +1,5 @@
 # Use PHP 8.1 FPM Alpine for smaller image size
-FROM php:8.1-fpm-alpine
+FROM php:8.3-fpm-alpine
 
 # Set working directory
 WORKDIR /var/www/html
