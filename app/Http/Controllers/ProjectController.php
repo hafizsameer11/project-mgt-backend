@@ -22,7 +22,7 @@ class ProjectController extends Controller
 
     public function index(Request $request)
     {
-        $projects = $this->projectService->getAll($request->all());
+        $projects = $this->projectService->getAll($request->all(), $request->user());
         return ProjectResource::collection($projects);
     }
 

@@ -221,6 +221,12 @@ Route::middleware('auth:sanctum')->group(function () {
 
             // Project Phases
             Route::apiResource('project-phases', ProjectPhaseController::class);
+
+            // Notifications
+            Route::get('/notifications', [NotificationController::class, 'index']);
+            Route::get('/notifications/unread', [NotificationController::class, 'unread']);
+            Route::post('/notifications/{id}/read', [NotificationController::class, 'markAsRead']);
+            Route::post('/notifications/read-all', [NotificationController::class, 'markAllAsRead']);
         });
 
         // Client Portal Routes (accessible to clients)

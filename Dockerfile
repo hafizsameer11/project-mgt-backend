@@ -36,11 +36,14 @@ RUN apk add --no-cache \
 # Install composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
-# Copy app (but exclude vendor from context)
-COPY . /var/www/html
+# Copy composer files first (for better caching)
+COPY composer.json composer.lock* ./
 
-# Install PHP dependencies
+# Install PHP dependencies (this layer is cached if composer files don't change)
 RUN composer install --no-dev --no-interaction --optimize-autoloader
+
+# Copy app code (this layer only rebuilds when code changes)
+COPY . /var/www/html
 
 # Copy Nginx config
 COPY docker/nginx.conf /etc/nginx/nginx.conf

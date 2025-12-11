@@ -19,9 +19,37 @@ class TaskService
         $this->activityLogRepository = $activityLogRepository;
     }
 
-    public function getAll(array $filters = [])
+    public function getAll(array $filters = [], $user = null)
     {
         $query = \App\Models\Task::query();
+
+        // Role-based filtering
+        if ($user) {
+            $role = $user->role;
+            
+            if ($role === 'Developer') {
+                // Developers see only tasks assigned to them or created by them
+                $query->where(function($q) use ($user) {
+                    $q->where('assigned_to', $user->id)
+                      ->orWhere('created_by', $user->id);
+                });
+            } elseif ($role === 'Project Manager') {
+                // Project Managers see tasks for projects they manage
+                // Get projects where PM is assigned as team member
+                $team = \App\Models\Team::where('user_id', $user->id)
+                    ->where('role', 'Project Manager')
+                    ->first();
+                
+                if ($team) {
+                    $projectIds = $team->projects()->pluck('projects.id');
+                    $query->whereIn('project_id', $projectIds);
+                } else {
+                    // If no team found, show only tasks created by them
+                    $query->where('created_by', $user->id);
+                }
+            }
+            // Admin sees all tasks (no additional filtering)
+        }
 
         if (isset($filters['status'])) {
             $query->where('status', $filters['status']);
@@ -35,7 +63,7 @@ class TaskService
             $query->where('project_id', $filters['project_id']);
         }
 
-        return $query->with('project', 'assignedUser')->paginate(15);
+        return $query->with('project', 'assignedUser', 'creator')->paginate(15);
     }
 
     public function create(array $data, int $userId)

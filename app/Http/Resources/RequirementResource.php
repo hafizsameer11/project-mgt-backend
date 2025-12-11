@@ -5,31 +5,31 @@ namespace App\Http\Resources;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-class TaskResource extends JsonResource
+class RequirementResource extends JsonResource
 {
+    /**
+     * Transform the resource into an array.
+     *
+     * @return array<string, mixed>
+     */
     public function toArray(Request $request): array
     {
         return [
             'id' => $this->id,
             'title' => $this->title,
             'description' => $this->description,
-            'project_id' => $this->project_id,
-            'project' => new ProjectResource($this->whenLoaded('project')),
-            'assigned_to' => $this->assigned_to,
-            'assigned_user' => new UserResource($this->whenLoaded('assignedUser')),
-            'created_by' => $this->created_by,
-            'creator' => new UserResource($this->whenLoaded('creator')),
+            'type' => $this->type,
+            'document_path' => $this->document_path,
+            'document_name' => $this->document_name,
+            'document_type' => $this->document_type,
             'priority' => $this->priority,
             'status' => $this->status,
-            'estimated_hours' => $this->estimated_hours,
-            'actual_time' => $this->actual_time,
-            'deadline' => $this->deadline?->format('Y-m-d'),
-            'attachments' => $this->attachments,
-            'task_type' => $this->task_type,
-            'requirements' => RequirementResource::collection($this->whenLoaded('requirements')),
+            'project_id' => $this->project_id,
+            'project' => new ProjectResource($this->whenLoaded('project')),
+            'created_by' => $this->created_by,
+            'creator' => new UserResource($this->whenLoaded('creator')),
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
         ];
     }
 }
-

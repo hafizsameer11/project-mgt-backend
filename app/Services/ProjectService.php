@@ -19,9 +19,26 @@ class ProjectService
         $this->activityLogRepository = $activityLogRepository;
     }
 
-    public function getAll(array $filters = [])
+    public function getAll(array $filters = [], $user = null)
     {
         $query = \App\Models\Project::query();
+
+        // Role-based filtering
+        if ($user && $user->role === 'Project Manager') {
+            // Project Managers see only projects they manage
+            $team = \App\Models\Team::where('user_id', $user->id)
+                ->where('role', 'Project Manager')
+                ->first();
+            
+            if ($team) {
+                $projectIds = $team->projects()->pluck('projects.id');
+                $query->whereIn('id', $projectIds);
+            } else {
+                // If no team found, show empty result
+                $query->whereRaw('1 = 0');
+            }
+        }
+        // Admin and other roles see all projects (no additional filtering)
 
         if (isset($filters['status'])) {
             $query->where('status', $filters['status']);
