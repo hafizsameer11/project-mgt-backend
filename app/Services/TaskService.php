@@ -19,6 +19,11 @@ class TaskService
         $this->activityLogRepository = $activityLogRepository;
     }
 
+    public function find(int $id)
+    {
+        return $this->taskRepository->find($id);
+    }
+
     public function getAll(array $filters = [], $user = null)
     {
         $query = \App\Models\Task::query();
@@ -34,21 +39,50 @@ class TaskService
                       ->orWhere('created_by', $user->id);
                 });
             } elseif ($role === 'Project Manager') {
-                // Project Managers see tasks for projects they manage
-                // Get projects where PM is assigned as team member
+                // Project Managers see:
+                // 1. Tasks for projects they manage (where they're assigned as PM)
+                // 2. Tasks assigned to them (regardless of project)
+                // 3. Tasks they created (only for their projects)
                 $team = \App\Models\Team::where('user_id', $user->id)
                     ->where('role', 'Project Manager')
                     ->first();
                 
                 if ($team) {
                     $projectIds = $team->projects()->pluck('projects.id');
-                    $query->whereIn('project_id', $projectIds);
+                    $query->where(function($q) use ($user, $projectIds) {
+                        // Tasks for their projects
+                        $q->whereIn('project_id', $projectIds)
+                          // OR tasks assigned to them (any project)
+                          ->orWhere('assigned_to', $user->id)
+                          // OR tasks they created for their projects
+                          ->orWhere(function($subQ) use ($user, $projectIds) {
+                              $subQ->where('created_by', $user->id)
+                                   ->whereIn('project_id', $projectIds);
+                          });
+                    })
+                    // Exclude tasks created by Admin for themselves (unless for PM's project)
+                    ->where(function($q) use ($projectIds) {
+                        // If task is for PM's project, always show it
+                        $q->whereIn('project_id', $projectIds->toArray())
+                        // OR if not created by Admin for themselves
+                        ->orWhereRaw('NOT (created_by = assigned_to AND created_by IN (SELECT id FROM users WHERE role = "Admin"))');
+                    });
                 } else {
-                    // If no team found, show only tasks created by them
-                    $query->where('created_by', $user->id);
+                    // If no team found, show only tasks assigned to them or created by them
+                    $query->where(function($q) use ($user) {
+                        $q->where('assigned_to', $user->id)
+                          ->orWhere('created_by', $user->id);
+                    })
+                    // Exclude Admin's personal tasks
+                    ->whereRaw('NOT (created_by = assigned_to AND created_by IN (SELECT id FROM users WHERE role = "Admin"))');
                 }
+            } elseif ($role === 'Admin') {
+                // Admin sees all tasks EXCEPT:
+                // Tasks created by PM for themselves (where created_by = assigned_to and creator is PM)
+                $query->where(function($q) {
+                    $q->whereRaw('NOT (created_by = assigned_to AND created_by IN (SELECT id FROM users WHERE role = "Project Manager"))');
+                });
             }
-            // Admin sees all tasks (no additional filtering)
         }
 
         if (isset($filters['status'])) {

@@ -7,6 +7,7 @@ use App\Http\Requests\UpdateTaskRequest;
 use App\Http\Resources\TaskResource;
 use App\Services\TaskService;
 use App\Services\FileUploadService;
+use App\Notifications\TaskAssignedNotification;
 use Illuminate\Http\Request;
 
 class TaskController extends Controller
@@ -36,8 +37,8 @@ class TaskController extends Controller
             $data['created_by'] = $user->id;
         }
         
-        // If assigned_to is not provided, assign to creator (their own task)
-        if (!isset($data['assigned_to'])) {
+        // If assigned_to is not provided or is empty, assign to creator (their own task)
+        if (!isset($data['assigned_to']) || $data['assigned_to'] === null || $data['assigned_to'] === '') {
             $data['assigned_to'] = $data['created_by'];
         }
         
@@ -70,7 +71,7 @@ class TaskController extends Controller
 
     public function show(int $id)
     {
-        $task = $this->taskService->taskRepository->find($id);
+        $task = $this->taskService->find($id);
         if (!$task) {
             return response()->json(['message' => 'Task not found'], 404);
         }
@@ -82,7 +83,7 @@ class TaskController extends Controller
         $data = $request->validated();
         
         // Get task before update to check old assigned_to
-        $oldTask = $this->taskService->taskRepository->find($id);
+        $oldTask = $this->taskService->find($id);
         if (!$oldTask) {
             return response()->json(['message' => 'Task not found'], 404);
         }
@@ -121,7 +122,7 @@ class TaskController extends Controller
     public function destroy(int $id, Request $request)
     {
         $user = $request->user();
-        $task = $this->taskService->taskRepository->find($id);
+        $task = $this->taskService->find($id);
         
         if (!$task) {
             return response()->json(['message' => 'Task not found'], 404);
