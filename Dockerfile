@@ -36,13 +36,16 @@ RUN apk add --no-cache \
 # Install composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
-# Copy app
+# Copy app (but exclude vendor from context)
 COPY . /var/www/html
 
-# Nginx config
+# Install PHP dependencies
+RUN composer install --no-dev --no-interaction --optimize-autoloader
+
+# Copy Nginx config
 COPY docker/nginx.conf /etc/nginx/nginx.conf
 
-# Entrypoint
+# Entry Script
 COPY docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
