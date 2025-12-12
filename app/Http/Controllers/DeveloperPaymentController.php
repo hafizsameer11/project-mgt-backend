@@ -44,26 +44,42 @@ class DeveloperPaymentController extends Controller
 
     public function store(Request $request)
     {
-        $request->validate([
+        $validated = $request->validate([
             'developer_id' => 'required|exists:teams,id',
             'project_id' => 'required|exists:projects,id',
             'total_assigned_amount' => 'nullable|numeric|min:0',
             'payment_notes' => 'nullable|string',
         ]);
 
-        $payment = $this->paymentService->create($request->validated(), $request->user()->id);
+        $payment = $this->paymentService->create($validated, $request->user()->id);
+        return response()->json($payment->load('developer', 'project'));
+    }
+
+    public function update(Request $request, int $id)
+    {
+        $validated = $request->validate([
+            'total_assigned_amount' => 'nullable|numeric|min:0',
+            'payment_notes' => 'nullable|string',
+        ]);
+
+        $payment = \App\Models\DeveloperPayment::find($id);
+        if (!$payment) {
+            return response()->json(['message' => 'Payment record not found'], 404);
+        }
+
+        $payment->update($validated);
         return response()->json($payment->load('developer', 'project'));
     }
 
     public function addPayment(Request $request, int $id)
     {
-        $request->validate([
+        $validated = $request->validate([
             'amount' => 'required|numeric|min:0',
             'payment_date' => 'nullable|date',
             'notes' => 'nullable|string',
         ]);
 
-        $payment = $this->paymentService->addPayment($id, $request->validated(), $request->user()->id);
+        $payment = $this->paymentService->addPayment($id, $validated, $request->user()->id);
         if (!$payment) {
             return response()->json(['message' => 'Payment record not found'], 404);
         }
