@@ -18,7 +18,48 @@ class RequirementController extends Controller
 
     public function index(Request $request)
     {
+        $user = $request->user();
         $query = Requirement::with(['project', 'creator']);
+
+        // Role-based filtering
+        if ($user && $user->role === 'Developer') {
+            // Developers see requirements for projects they are assigned to
+            $projectIds = collect();
+            
+            // Get projects via team assignments
+            $team = \App\Models\Team::where('user_id', $user->id)->first();
+            if ($team) {
+                $teamProjectIds = $team->projects()->pluck('projects.id');
+                $projectIds = $projectIds->merge($teamProjectIds);
+            }
+            
+            // Get projects via task assignments
+            $taskProjectIds = \App\Models\Task::where('assigned_to', $user->id)
+                ->whereNotNull('project_id')
+                ->distinct()
+                ->pluck('project_id');
+            $projectIds = $projectIds->merge($taskProjectIds);
+            
+            if ($projectIds->isNotEmpty()) {
+                $query->whereIn('project_id', $projectIds->unique());
+            } else {
+                // If no projects found, show empty result
+                $query->whereRaw('1 = 0');
+            }
+        } elseif ($user && $user->role === 'Project Manager') {
+            // Project Managers see requirements for projects they manage
+            $team = \App\Models\Team::where('user_id', $user->id)
+                ->where('role', 'Project Manager')
+                ->first();
+            
+            if ($team) {
+                $projectIds = $team->projects()->pluck('projects.id');
+                $query->whereIn('project_id', $projectIds);
+            } else {
+                $query->whereRaw('1 = 0');
+            }
+        }
+        // Admin sees all requirements (no additional filtering)
 
         if ($request->has('project_id')) {
             $query->where('project_id', $request->project_id);
@@ -74,12 +115,55 @@ class RequirementController extends Controller
         return response()->json($requirement->load(['project', 'creator']), 201);
     }
 
-    public function show(int $id)
+    public function show(Request $request, int $id)
     {
         $requirement = Requirement::with(['project', 'creator'])->find($id);
         if (!$requirement) {
             return response()->json(['message' => 'Requirement not found'], 404);
         }
+
+        $user = $request->user();
+        
+        // Access control for developers
+        if ($user && $user->role === 'Developer') {
+            $projectId = $requirement->project_id;
+            $hasAccess = false;
+            
+            // Check if developer is assigned via team
+            $team = \App\Models\Team::where('user_id', $user->id)->first();
+            if ($team) {
+                $hasAccess = $team->projects()->where('projects.id', $projectId)->exists();
+            }
+            
+            // Check if developer has tasks assigned for this project
+            if (!$hasAccess) {
+                $hasAccess = \App\Models\Task::where('assigned_to', $user->id)
+                    ->where('project_id', $projectId)
+                    ->exists();
+            }
+            
+            if (!$hasAccess) {
+                return response()->json(['message' => 'You do not have access to this requirement'], 403);
+            }
+        }
+        
+        // Access control for Project Managers
+        if ($user && $user->role === 'Project Manager') {
+            $projectId = $requirement->project_id;
+            $team = \App\Models\Team::where('user_id', $user->id)
+                ->where('role', 'Project Manager')
+                ->first();
+            
+            if ($team) {
+                $hasAccess = $team->projects()->where('projects.id', $projectId)->exists();
+                if (!$hasAccess) {
+                    return response()->json(['message' => 'You do not have access to this requirement'], 403);
+                }
+            } else {
+                return response()->json(['message' => 'You do not have access to this requirement'], 403);
+            }
+        }
+
         return response()->json($requirement);
     }
 

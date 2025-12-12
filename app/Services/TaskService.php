@@ -93,6 +93,14 @@ class TaskService
             $query->where('assigned_to', $filters['assigned_to']);
         }
 
+        if (isset($filters['created_by'])) {
+            $query->where('created_by', $filters['created_by']);
+        }
+
+        if (isset($filters['exclude_created_by'])) {
+            $query->where('created_by', '!=', $filters['exclude_created_by']);
+        }
+
         if (isset($filters['project_id'])) {
             $query->where('project_id', $filters['project_id']);
         }

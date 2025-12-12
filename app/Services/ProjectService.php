@@ -37,6 +37,30 @@ class ProjectService
                 // If no team found, show empty result
                 $query->whereRaw('1 = 0');
             }
+        } elseif ($user && $user->role === 'Developer') {
+            // Developers see projects they are assigned to via teams or tasks
+            $projectIds = collect();
+            
+            // Get projects via team assignments
+            $team = \App\Models\Team::where('user_id', $user->id)->first();
+            if ($team) {
+                $teamProjectIds = $team->projects()->pluck('projects.id');
+                $projectIds = $projectIds->merge($teamProjectIds);
+            }
+            
+            // Get projects via task assignments
+            $taskProjectIds = \App\Models\Task::where('assigned_to', $user->id)
+                ->whereNotNull('project_id')
+                ->distinct()
+                ->pluck('project_id');
+            $projectIds = $projectIds->merge($taskProjectIds);
+            
+            if ($projectIds->isNotEmpty()) {
+                $query->whereIn('id', $projectIds->unique());
+            } else {
+                // If no projects found, show empty result
+                $query->whereRaw('1 = 0');
+            }
         }
         // Admin and other roles see all projects (no additional filtering)
 
