@@ -31,6 +31,14 @@ class ProjectDocumentController extends Controller
 
     public function store(Request $request)
     {
+        // Parse credentials if it's a JSON string
+        if ($request->has('credentials') && is_string($request->credentials)) {
+            $credentials = json_decode($request->credentials, true);
+            if (json_last_error() === JSON_ERROR_NONE) {
+                $request->merge(['credentials' => $credentials]);
+            }
+        }
+
         $request->validate([
             'project_id' => 'required|exists:projects,id',
             'title' => 'required|string|max:255',
@@ -81,6 +89,14 @@ class ProjectDocumentController extends Controller
 
     public function update(Request $request, int $id)
     {
+        // Parse credentials if it's a JSON string
+        if ($request->has('credentials') && is_string($request->credentials)) {
+            $credentials = json_decode($request->credentials, true);
+            if (json_last_error() === JSON_ERROR_NONE) {
+                $request->merge(['credentials' => $credentials]);
+            }
+        }
+
         $request->validate([
             'title' => 'sometimes|required|string|max:255',
             'type' => 'sometimes|in:Document,GitHub Credentials,Server Credentials,Database Credentials,API Keys,Domain Credentials,Hosting Credentials,Other',
