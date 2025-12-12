@@ -3,6 +3,25 @@ set -e
 
 echo "Starting Laravel application..."
 
+# Create storage directories if they don't exist
+mkdir -p /var/www/html/storage/app/public/requirements || true
+mkdir -p /var/www/html/storage/app/public/project-documents || true
+mkdir -p /var/www/html/storage/app/public/uploads || true
+mkdir -p /var/www/html/storage/app/public/projects || true
+mkdir -p /var/www/html/storage/framework/cache || true
+mkdir -p /var/www/html/storage/framework/sessions || true
+mkdir -p /var/www/html/storage/framework/views || true
+mkdir -p /var/www/html/storage/logs || true
+
+# Set proper permissions
+chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache || true
+chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache || true
+
+# Create storage symlink if it doesn't exist
+if [ ! -L /var/www/html/public/storage ]; then
+    php artisan storage:link || true
+fi
+
 # Clear Laravel caches
 php artisan optimize:clear || true
 
@@ -10,10 +29,6 @@ php artisan optimize:clear || true
 php artisan config:cache || true
 php artisan route:cache || true
 php artisan view:cache || true
-
-# Set proper permissions
-chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache || true
-chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache || true
 
 echo "Starting services with supervisor..."
 

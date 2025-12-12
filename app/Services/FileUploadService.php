@@ -11,7 +11,9 @@ class FileUploadService
     {
         $filename = time() . '_' . uniqid() . '.' . $file->getClientOriginalExtension();
         $path = $file->storeAs($folder, $filename, 'public');
-        return Storage::url($path);
+        // Return the relative path that can be used with Storage::url() or stored in DB
+        // Storage::url() will return /storage/folder/filename.ext
+        return $path;
     }
 
     public function uploadMultiple(array $files, string $folder = 'uploads'): array

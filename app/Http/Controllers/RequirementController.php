@@ -6,6 +6,7 @@ use App\Models\Requirement;
 use App\Services\FileUploadService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Log;
 
 class RequirementController extends Controller
 {
@@ -104,15 +105,42 @@ class RequirementController extends Controller
 
         // Handle document upload
         if ($request->type === 'document' && $request->hasFile('document')) {
-            $file = $request->file('document');
-            $path = $this->fileUploadService->upload($file, 'requirements');
-            $data['document_path'] = $path;
-            $data['document_name'] = $file->getClientOriginalName();
-            $data['document_type'] = $file->getClientOriginalExtension();
+            try {
+                $file = $request->file('document');
+                
+                // Check if file upload was successful
+                if (!$file->isValid()) {
+                    return response()->json([
+                        'message' => 'File upload failed: ' . $file->getErrorMessage()
+                    ], 422);
+                }
+                
+                $path = $this->fileUploadService->upload($file, 'requirements');
+                $data['document_path'] = $path;
+                $data['document_name'] = $file->getClientOriginalName();
+                $data['document_type'] = $file->getClientOriginalExtension();
+            } catch (\Exception $e) {
+                Log::error('File upload error: ' . $e->getMessage(), [
+                    'trace' => $e->getTraceAsString()
+                ]);
+                return response()->json([
+                    'message' => 'File upload failed: ' . $e->getMessage()
+                ], 500);
+            }
         }
 
-        $requirement = Requirement::create($data);
-        return response()->json($requirement->load(['project', 'creator']), 201);
+        try {
+            $requirement = Requirement::create($data);
+            return response()->json($requirement->load(['project', 'creator']), 201);
+        } catch (\Exception $e) {
+            Log::error('Requirement creation error: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+                'data' => $data
+            ]);
+            return response()->json([
+                'message' => 'Failed to create requirement: ' . $e->getMessage()
+            ], 500);
+        }
     }
 
     public function show(Request $request, int $id)
@@ -194,20 +222,46 @@ class RequirementController extends Controller
 
         // Handle document upload
         if ($request->hasFile('document')) {
-            // Delete old document
-            if ($requirement->document_path) {
-                Storage::disk('public')->delete($requirement->document_path);
+            try {
+                // Delete old document
+                if ($requirement->document_path) {
+                    Storage::disk('public')->delete($requirement->document_path);
+                }
+                
+                $file = $request->file('document');
+                
+                // Check if file upload was successful
+                if (!$file->isValid()) {
+                    return response()->json([
+                        'message' => 'File upload failed: ' . $file->getErrorMessage()
+                    ], 422);
+                }
+                
+                $path = $this->fileUploadService->upload($file, 'requirements');
+                $data['document_path'] = $path;
+                $data['document_name'] = $file->getClientOriginalName();
+                $data['document_type'] = $file->getClientOriginalExtension();
+            } catch (\Exception $e) {
+                Log::error('File upload error: ' . $e->getMessage(), [
+                    'trace' => $e->getTraceAsString()
+                ]);
+                return response()->json([
+                    'message' => 'File upload failed: ' . $e->getMessage()
+                ], 500);
             }
-            
-            $file = $request->file('document');
-            $path = $this->fileUploadService->upload($file, 'requirements');
-            $data['document_path'] = $path;
-            $data['document_name'] = $file->getClientOriginalName();
-            $data['document_type'] = $file->getClientOriginalExtension();
         }
 
-        $requirement->update($data);
-        return response()->json($requirement->load(['project', 'creator']));
+        try {
+            $requirement->update($data);
+            return response()->json($requirement->load(['project', 'creator']));
+        } catch (\Exception $e) {
+            Log::error('Requirement update error: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString()
+            ]);
+            return response()->json([
+                'message' => 'Failed to update requirement: ' . $e->getMessage()
+            ], 500);
+        }
     }
 
     public function destroy(int $id, Request $request)

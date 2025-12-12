@@ -53,6 +53,9 @@ COPY docker/php-fpm/www.conf /usr/local/etc/php-fpm.d/www.conf
 RUN mkdir -p /etc/supervisor/conf.d
 COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
+# Copy PHP configuration for file uploads
+COPY docker/php.ini /usr/local/etc/php/conf.d/uploads.ini
+
 # Create socket and log directories
 RUN mkdir -p /run /var/log/nginx && \
     chown www-data:www-data /run && \
