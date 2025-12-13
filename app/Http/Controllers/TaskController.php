@@ -75,7 +75,7 @@ class TaskController extends Controller
         if (!$task) {
             return response()->json(['message' => 'Task not found'], 404);
         }
-        return new TaskResource($task->load('project', 'assignedUser', 'timers', 'requirements'));
+        return new TaskResource($task->load('project', 'assignedUser', 'creator', 'timers', 'requirements'));
     }
 
     public function update(UpdateTaskRequest $request, int $id)
