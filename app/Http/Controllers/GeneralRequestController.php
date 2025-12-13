@@ -40,6 +40,12 @@ class GeneralRequestController extends Controller
             'status' => 'Pending',
         ]);
 
+        // Notify admin
+        $admins = \App\Models\User::where('role', 'Admin')->get();
+        foreach ($admins as $admin) {
+            $admin->notify(new \App\Notifications\GeneralRequestNotification($generalRequest->load('team'), 'created'));
+        }
+
         return response()->json($generalRequest->load('team'), 201);
     }
 
@@ -55,11 +61,21 @@ class GeneralRequestController extends Controller
             'response' => 'nullable|string',
         ]);
 
+        $oldStatus = $generalRequest->status;
         $generalRequest->update([
             'status' => $request->status,
             'approved_by' => $request->status !== 'Pending' ? $request->user()->id : null,
             'response' => $request->response,
         ]);
+
+        // Notify requester if status changed from Pending
+        if ($oldStatus === 'Pending' && $request->status !== 'Pending') {
+            $team = $generalRequest->team;
+            if ($team && $team->user) {
+                $action = $request->status === 'Approved' ? 'approved' : ($request->status === 'In Progress' ? 'in_progress' : 'rejected');
+                $team->user->notify(new \App\Notifications\GeneralRequestNotification($generalRequest->load('team'), $action));
+            }
+        }
 
         return response()->json($generalRequest->load('team', 'approver'));
     }

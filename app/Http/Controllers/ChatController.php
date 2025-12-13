@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Models\Project;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use App\Notifications\ChatMessageNotification;
 
 class ChatController extends Controller
 {
@@ -96,6 +97,23 @@ class ChatController extends Controller
                 'type' => 'group',
                 'is_read' => false,
             ]);
+
+            // Notify all project team members except sender
+            $project = Project::with('teams.user')->find($request->project_id);
+            if ($project) {
+                foreach ($project->teams as $team) {
+                    if ($team->user_id !== $user->id) {
+                        $team->user->notify(new \App\Notifications\ChatMessageNotification($message, $user));
+                    }
+                }
+                // Also notify assigned BD if different from sender
+                if ($project->assigned_bd && $project->assigned_bd !== $user->id) {
+                    $bd = \App\Models\User::find($project->assigned_bd);
+                    if ($bd) {
+                        $bd->notify(new \App\Notifications\ChatMessageNotification($message, $user));
+                    }
+                }
+            }
         } else {
             // Private chat
             $message = ChatMessage::create([
@@ -106,6 +124,14 @@ class ChatController extends Controller
                 'type' => 'private',
                 'is_read' => false,
             ]);
+
+            // Notify receiver
+            if ($request->receiver_id) {
+                $receiver = \App\Models\User::find($request->receiver_id);
+                if ($receiver) {
+                    $receiver->notify(new \App\Notifications\ChatMessageNotification($message, $user));
+                }
+            }
         }
 
         return response()->json($message->load('sender', 'receiver', 'project'), 201);

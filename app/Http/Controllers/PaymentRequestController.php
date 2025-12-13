@@ -40,6 +40,12 @@ class PaymentRequestController extends Controller
             'status' => 'Pending',
         ]);
 
+        // Notify admin
+        $admins = \App\Models\User::where('role', 'Admin')->get();
+        foreach ($admins as $admin) {
+            $admin->notify(new \App\Notifications\PaymentRequestNotification($paymentRequest->load('team', 'project'), 'created'));
+        }
+
         return response()->json($paymentRequest->load('team', 'project'), 201);
     }
 
@@ -55,11 +61,21 @@ class PaymentRequestController extends Controller
             'rejection_reason' => 'nullable|string',
         ]);
 
+        $oldStatus = $paymentRequest->status;
         $paymentRequest->update([
             'status' => $request->status,
             'approved_by' => $request->status !== 'Pending' ? $request->user()->id : null,
             'rejection_reason' => $request->rejection_reason,
         ]);
+
+        // Notify requester if status changed from Pending
+        if ($oldStatus === 'Pending' && $request->status !== 'Pending') {
+            $team = $paymentRequest->team;
+            if ($team && $team->user) {
+                $action = $request->status === 'Approved' ? 'approved' : 'rejected';
+                $team->user->notify(new \App\Notifications\PaymentRequestNotification($paymentRequest->load('team', 'project'), $action));
+            }
+        }
 
         return response()->json($paymentRequest->load('team', 'project', 'approver'));
     }

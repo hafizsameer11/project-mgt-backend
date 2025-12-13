@@ -230,6 +230,11 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('/notifications/unread', [NotificationController::class, 'unread']);
             Route::post('/notifications/{id}/read', [NotificationController::class, 'markAsRead']);
             Route::post('/notifications/read-all', [NotificationController::class, 'markAllAsRead']);
+
+            // Push Subscriptions
+            Route::get('/push/public-key', [\App\Http\Controllers\PushSubscriptionController::class, 'getPublicKey']);
+            Route::post('/push/subscribe', [\App\Http\Controllers\PushSubscriptionController::class, 'store']);
+            Route::post('/push/unsubscribe', [\App\Http\Controllers\PushSubscriptionController::class, 'destroy']);
         });
 
         // Client Portal Routes (accessible to clients)

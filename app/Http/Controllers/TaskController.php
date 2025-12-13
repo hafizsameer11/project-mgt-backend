@@ -66,6 +66,14 @@ class TaskController extends Controller
             }
         }
         
+        // Notify admin when task is created (if creator is not admin)
+        if ($user->role !== 'Admin') {
+            $admins = \App\Models\User::where('role', 'Admin')->get();
+            foreach ($admins as $admin) {
+                $admin->notify(new \App\Notifications\TaskCreatedNotification($task->load('project')));
+            }
+        }
+        
         return new TaskResource($task->load('project', 'assignedUser', 'creator', 'requirements'));
     }
 

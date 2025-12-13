@@ -47,6 +47,12 @@ class LeaveRequestController extends Controller
             'status' => 'Pending',
         ]);
 
+        // Notify admin
+        $admins = \App\Models\User::where('role', 'Admin')->get();
+        foreach ($admins as $admin) {
+            $admin->notify(new \App\Notifications\LeaveRequestNotification($leaveRequest->load('team'), 'created'));
+        }
+
         return response()->json($leaveRequest->load('team'), 201);
     }
 
@@ -62,11 +68,21 @@ class LeaveRequestController extends Controller
             'rejection_reason' => 'nullable|string',
         ]);
 
+        $oldStatus = $leaveRequest->status;
         $leaveRequest->update([
             'status' => $request->status,
             'approved_by' => $request->status !== 'Pending' ? $request->user()->id : null,
             'rejection_reason' => $request->rejection_reason,
         ]);
+
+        // Notify requester if status changed from Pending
+        if ($oldStatus === 'Pending' && $request->status !== 'Pending') {
+            $team = $leaveRequest->team;
+            if ($team && $team->user) {
+                $action = $request->status === 'Approved' ? 'approved' : 'rejected';
+                $team->user->notify(new \App\Notifications\LeaveRequestNotification($leaveRequest->load('team'), $action));
+            }
+        }
 
         return response()->json($leaveRequest->load('team', 'approver'));
     }
