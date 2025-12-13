@@ -27,6 +27,18 @@ class TaskResource extends JsonResource
             'attachments' => $this->attachments,
             'task_type' => $this->task_type,
             'requirements' => RequirementResource::collection($this->whenLoaded('requirements')),
+            'timers' => $this->whenLoaded('timers', function () {
+                return $this->timers->map(function ($timer) {
+                    return [
+                        'id' => $timer->id,
+                        'started_at' => $timer->started_at?->toISOString(),
+                        'paused_at' => $timer->paused_at?->toISOString(),
+                        'stopped_at' => $timer->stopped_at?->toISOString(),
+                        'total_seconds' => $timer->total_seconds,
+                        'total_hours' => $timer->total_seconds ? round($timer->total_seconds / 3600, 2) : 0,
+                    ];
+                });
+            }),
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
         ];

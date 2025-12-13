@@ -86,8 +86,11 @@ class TaskService
                     // Filters will be applied later, so just skip the default filtering
                 } elseif (isset($filters['exclude_created_by']) && $filters['exclude_created_by'] == $user->id &&
                           isset($filters['exclude_assigned_to']) && $filters['exclude_assigned_to'] == $user->id) {
-                    // Show tasks NOT created by admin and NOT assigned to admin
-                    // Filters will be applied later, so just skip the default filtering
+                    // Show all tasks EXCEPT admin's personal tasks (where both created_by AND assigned_to are admin)
+                    // This includes: tasks created by admin for developers, tasks created by others, etc.
+                    $query->where(function($q) use ($user) {
+                        $q->whereRaw('NOT (created_by = ? AND assigned_to = ?)', [$user->id, $user->id]);
+                    });
                 } else {
                     // Default: show all tasks except PM's personal tasks
                     $query->where(function($q) {
@@ -109,12 +112,22 @@ class TaskService
             $query->where('created_by', $filters['created_by']);
         }
 
-        if (isset($filters['exclude_created_by'])) {
-            $query->where('created_by', '!=', $filters['exclude_created_by']);
+        // Apply exclude filters only if not already handled in role-based filtering above
+        $excludeAlreadyHandled = false;
+        if ($user && $user->role === 'Admin' && 
+            isset($filters['exclude_created_by']) && $filters['exclude_created_by'] == $user->id &&
+            isset($filters['exclude_assigned_to']) && $filters['exclude_assigned_to'] == $user->id) {
+            $excludeAlreadyHandled = true;
         }
 
-        if (isset($filters['exclude_assigned_to'])) {
-            $query->where('assigned_to', '!=', $filters['exclude_assigned_to']);
+        if (!$excludeAlreadyHandled) {
+            if (isset($filters['exclude_created_by'])) {
+                $query->where('created_by', '!=', $filters['exclude_created_by']);
+            }
+
+            if (isset($filters['exclude_assigned_to'])) {
+                $query->where('assigned_to', '!=', $filters['exclude_assigned_to']);
+            }
         }
 
         if (isset($filters['project_id'])) {
