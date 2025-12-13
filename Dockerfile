@@ -61,6 +61,10 @@ RUN mkdir -p /run /var/log/nginx && \
     chown www-data:www-data /run && \
     chown -R www-data:www-data /var/log/nginx
 
+# Fix nginx directory permissions (required to persist across rebuilds)
+RUN mkdir -p /var/lib/nginx/tmp && \
+    chmod -R 755 /var/lib/nginx
+
 # Entry Script
 COPY docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
