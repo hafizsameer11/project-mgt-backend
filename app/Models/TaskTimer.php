@@ -14,15 +14,21 @@ class TaskTimer extends Model
         'task_id',
         'user_id',
         'started_at',
+        'original_started_at',
         'paused_at',
+        'resumed_at',
         'stopped_at',
         'total_seconds',
+        'pause_history',
     ];
 
     protected $casts = [
         'started_at' => 'datetime',
+        'original_started_at' => 'datetime',
         'paused_at' => 'datetime',
+        'resumed_at' => 'datetime',
         'stopped_at' => 'datetime',
+        'pause_history' => 'array',
     ];
 
     public function task(): BelongsTo

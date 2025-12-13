@@ -183,10 +183,13 @@ class TaskService
             return null;
         }
 
+        $now = now();
         $timer = \App\Models\TaskTimer::create([
             'task_id' => $taskId,
             'user_id' => $userId,
-            'started_at' => now(),
+            'started_at' => $now,
+            'original_started_at' => $now,
+            'pause_history' => [],
         ]);
 
         return $timer;
@@ -203,9 +206,19 @@ class TaskService
         $pausedAt = now();
         $seconds = $startedAt->diffInSeconds($pausedAt);
 
+        // Add pause event to history
+        $pauseHistory = $timer->pause_history ?? [];
+        $pauseHistory[] = [
+            'type' => 'pause',
+            'at' => $pausedAt->toISOString(),
+            'session_started_at' => $startedAt->toISOString(),
+            'seconds_before_pause' => $seconds,
+        ];
+
         $timer->update([
             'paused_at' => $pausedAt,
             'total_seconds' => ($timer->total_seconds ?? 0) + $seconds,
+            'pause_history' => $pauseHistory,
         ]);
 
         return $timer;
@@ -218,9 +231,23 @@ class TaskService
             return null;
         }
 
+        $resumedAt = now();
+        $pausedAt = $timer->paused_at;
+
+        // Add resume event to history (keep paused_at for history)
+        $pauseHistory = $timer->pause_history ?? [];
+        $pauseHistory[] = [
+            'type' => 'resume',
+            'at' => $resumedAt->toISOString(),
+            'paused_at' => $pausedAt->toISOString(),
+            'pause_duration_seconds' => $pausedAt->diffInSeconds($resumedAt),
+        ];
+
         $timer->update([
-            'started_at' => now(),
-            'paused_at' => null,
+            'started_at' => $resumedAt, // New session start time
+            'resumed_at' => $resumedAt,
+            'pause_history' => $pauseHistory,
+            // Keep paused_at for history - don't clear it
         ]);
 
         return $timer;

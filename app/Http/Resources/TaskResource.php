@@ -32,10 +32,13 @@ class TaskResource extends JsonResource
                     return [
                         'id' => $timer->id,
                         'started_at' => $timer->started_at?->toISOString(),
+                        'original_started_at' => $timer->original_started_at?->toISOString(),
                         'paused_at' => $timer->paused_at?->toISOString(),
+                        'resumed_at' => $timer->resumed_at?->toISOString(),
                         'stopped_at' => $timer->stopped_at?->toISOString(),
                         'total_seconds' => $timer->total_seconds,
                         'total_hours' => $timer->total_seconds ? round($timer->total_seconds / 3600, 2) : 0,
+                        'pause_history' => $timer->pause_history ?? [],
                     ];
                 });
             }),

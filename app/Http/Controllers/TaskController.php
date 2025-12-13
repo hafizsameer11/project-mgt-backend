@@ -83,7 +83,11 @@ class TaskController extends Controller
         if (!$task) {
             return response()->json(['message' => 'Task not found'], 404);
         }
-        return new TaskResource($task->load('project', 'assignedUser', 'creator', 'timers', 'requirements'));
+        // Load timers with user relationship and order by most recent
+        $task->load(['project', 'assignedUser', 'creator', 'requirements', 'timers' => function($query) {
+            $query->orderBy('created_at', 'desc');
+        }]);
+        return new TaskResource($task);
     }
 
     public function update(UpdateTaskRequest $request, int $id)
