@@ -27,7 +27,11 @@ class TeamController extends Controller
             $query->where('payment_type', $request->payment_type);
         }
 
-        $teams = $query->paginate(15);
+        $perPage = $request->get('per_page', 15);
+        // Limit max per_page to prevent performance issues
+        $perPage = min($perPage, 1000);
+        
+        $teams = $query->paginate($perPage);
         return TeamResource::collection($teams);
     }
 
