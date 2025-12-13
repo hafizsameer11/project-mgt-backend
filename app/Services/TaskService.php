@@ -79,9 +79,21 @@ class TaskService
             } elseif ($role === 'Admin') {
                 // Admin sees all tasks EXCEPT:
                 // Tasks created by PM for themselves (where created_by = assigned_to and creator is PM)
-                $query->where(function($q) {
-                    $q->whereRaw('NOT (created_by = assigned_to AND created_by IN (SELECT id FROM users WHERE role = "Project Manager"))');
-                });
+                // But if filters specify created_by and assigned_to, show only that admin's tasks
+                if (isset($filters['created_by']) && $filters['created_by'] == $user->id && 
+                    isset($filters['assigned_to']) && $filters['assigned_to'] == $user->id) {
+                    // Show only admin's personal tasks (created by and assigned to admin)
+                    // Filters will be applied later, so just skip the default filtering
+                } elseif (isset($filters['exclude_created_by']) && $filters['exclude_created_by'] == $user->id &&
+                          isset($filters['exclude_assigned_to']) && $filters['exclude_assigned_to'] == $user->id) {
+                    // Show tasks NOT created by admin and NOT assigned to admin
+                    // Filters will be applied later, so just skip the default filtering
+                } else {
+                    // Default: show all tasks except PM's personal tasks
+                    $query->where(function($q) {
+                        $q->whereRaw('NOT (created_by = assigned_to AND created_by IN (SELECT id FROM users WHERE role = "Project Manager"))');
+                    });
+                }
             }
         }
 
@@ -99,6 +111,10 @@ class TaskService
 
         if (isset($filters['exclude_created_by'])) {
             $query->where('created_by', '!=', $filters['exclude_created_by']);
+        }
+
+        if (isset($filters['exclude_assigned_to'])) {
+            $query->where('assigned_to', '!=', $filters['exclude_assigned_to']);
         }
 
         if (isset($filters['project_id'])) {
@@ -163,21 +179,78 @@ class TaskService
         return $timer;
     }
 
+    public function pauseTimer(int $timerId)
+    {
+        $timer = \App\Models\TaskTimer::find($timerId);
+        if (!$timer || $timer->stopped_at || $timer->paused_at) {
+            return null;
+        }
+
+        $startedAt = $timer->started_at;
+        $pausedAt = now();
+        $seconds = $startedAt->diffInSeconds($pausedAt);
+
+        $timer->update([
+            'paused_at' => $pausedAt,
+            'total_seconds' => ($timer->total_seconds ?? 0) + $seconds,
+        ]);
+
+        return $timer;
+    }
+
+    public function resumeTimer(int $timerId)
+    {
+        $timer = \App\Models\TaskTimer::find($timerId);
+        if (!$timer || $timer->stopped_at || !$timer->paused_at) {
+            return null;
+        }
+
+        $timer->update([
+            'started_at' => now(),
+            'paused_at' => null,
+        ]);
+
+        return $timer;
+    }
+
     public function stopTimer(int $timerId)
     {
         $timer = \App\Models\TaskTimer::find($timerId);
-        if (!$timer) {
+        if (!$timer || $timer->stopped_at) {
             return null;
         }
 
         $startedAt = $timer->started_at;
         $stoppedAt = now();
-        $seconds = $startedAt->diffInSeconds($stoppedAt);
+        $seconds = 0;
+
+        if ($timer->paused_at) {
+            // Already paused, use existing total_seconds
+            $seconds = $timer->total_seconds ?? 0;
+        } else {
+            // Still running, calculate seconds
+            $seconds = ($timer->total_seconds ?? 0) + $startedAt->diffInSeconds($stoppedAt);
+        }
 
         $timer->update([
             'stopped_at' => $stoppedAt,
-            'total_seconds' => ($timer->total_seconds ?? 0) + $seconds,
+            'total_seconds' => $seconds,
         ]);
+
+        // Calculate total hours and update task
+        $task = $timer->task;
+        if ($task) {
+            $totalSeconds = \App\Models\TaskTimer::where('task_id', $task->id)
+                ->whereNotNull('stopped_at')
+                ->sum('total_seconds');
+            
+            $totalHours = round($totalSeconds / 3600, 2);
+            
+            $task->update([
+                'actual_time' => $totalHours,
+                'status' => 'Review',
+            ]);
+        }
 
         return $timer;
     }

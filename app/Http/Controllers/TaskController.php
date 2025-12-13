@@ -156,6 +156,24 @@ class TaskController extends Controller
         return response()->json($timer);
     }
 
+    public function pauseTimer(Request $request, int $timerId)
+    {
+        $timer = $this->taskService->pauseTimer($timerId);
+        if (!$timer) {
+            return response()->json(['message' => 'Timer not found or already paused/stopped'], 404);
+        }
+        return response()->json($timer);
+    }
+
+    public function resumeTimer(Request $request, int $timerId)
+    {
+        $timer = $this->taskService->resumeTimer($timerId);
+        if (!$timer) {
+            return response()->json(['message' => 'Timer not found or not paused'], 404);
+        }
+        return response()->json($timer);
+    }
+
     public function stopTimer(Request $request, int $timerId)
     {
         $timer = $this->taskService->stopTimer($timerId);
@@ -163,6 +181,22 @@ class TaskController extends Controller
             return response()->json(['message' => 'Timer not found'], 404);
         }
         return response()->json($timer);
+    }
+
+    public function getActiveTimer(Request $request, int $taskId)
+    {
+        $user = $request->user();
+        $timer = \App\Models\TaskTimer::where('task_id', $taskId)
+            ->where('user_id', $user->id)
+            ->whereNull('stopped_at')
+            ->latest()
+            ->first();
+        
+        if (!$timer) {
+            return response()->json(['timer' => null]);
+        }
+        
+        return response()->json(['timer' => $timer]);
     }
 }
 

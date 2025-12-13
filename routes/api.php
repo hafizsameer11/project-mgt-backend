@@ -86,6 +86,9 @@ Route::middleware('auth:sanctum')->group(function () {
     // Tasks
     Route::apiResource('tasks', TaskController::class);
     Route::post('/tasks/{id}/timer/start', [TaskController::class, 'startTimer']);
+    Route::get('/tasks/{id}/timer/active', [TaskController::class, 'getActiveTimer']);
+    Route::post('/tasks/timer/{timerId}/pause', [TaskController::class, 'pauseTimer']);
+    Route::post('/tasks/timer/{timerId}/resume', [TaskController::class, 'resumeTimer']);
     Route::post('/tasks/timer/{timerId}/stop', [TaskController::class, 'stopTimer']);
 
     // Developer Payments
