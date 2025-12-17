@@ -198,8 +198,16 @@ class TaskService
     public function pauseTimer(int $timerId)
     {
         $timer = \App\Models\TaskTimer::find($timerId);
-        if (!$timer || $timer->stopped_at || $timer->paused_at) {
+        if (!$timer || $timer->stopped_at) {
             return null;
+        }
+
+        // Check if timer is currently running (not paused)
+        // Timer is running if paused_at is null OR (resumed_at is set AND resumed_at >= paused_at)
+        $isRunning = !$timer->paused_at || ($timer->resumed_at && $timer->resumed_at->gte($timer->paused_at));
+        
+        if (!$isRunning) {
+            return null; // Timer is already paused
         }
 
         $startedAt = $timer->started_at;
@@ -227,7 +235,15 @@ class TaskService
     public function resumeTimer(int $timerId)
     {
         $timer = \App\Models\TaskTimer::find($timerId);
-        if (!$timer || $timer->stopped_at || !$timer->paused_at) {
+        if (!$timer || $timer->stopped_at) {
+            return null;
+        }
+
+        // Check if timer is currently paused
+        // Timer is paused if paused_at is set AND (resumed_at is null OR paused_at is after resumed_at)
+        $isPaused = $timer->paused_at && (!$timer->resumed_at || $timer->paused_at->isAfter($timer->resumed_at));
+        
+        if (!$isPaused) {
             return null;
         }
 
