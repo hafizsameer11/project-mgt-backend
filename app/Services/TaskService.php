@@ -183,6 +183,29 @@ class TaskService
             return null;
         }
 
+        // Check if there's already an active timer (not stopped) for this task and user
+        $existingTimer = \App\Models\TaskTimer::where('task_id', $taskId)
+            ->where('user_id', $userId)
+            ->whereNull('stopped_at')
+            ->latest()
+            ->first();
+
+        if ($existingTimer) {
+            // Check if the existing timer is paused
+            // Timer is paused if paused_at is set AND (resumed_at is null OR paused_at is after resumed_at)
+            $isPaused = $existingTimer->paused_at && 
+                (!$existingTimer->resumed_at || $existingTimer->paused_at->isAfter($existingTimer->resumed_at));
+            
+            if ($isPaused) {
+                // Timer is paused, resume it instead of creating a new one
+                return $this->resumeTimer($existingTimer->id);
+            } else {
+                // Timer is already running, return it
+                return $existingTimer;
+            }
+        }
+
+        // No active timer exists, create a new one
         $now = now();
         $timer = \App\Models\TaskTimer::create([
             'task_id' => $taskId,

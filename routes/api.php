@@ -245,5 +245,7 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('/tasks', [ClientPortalController::class, 'tasks']);
             Route::get('/payments', [ClientPortalController::class, 'payments']);
             Route::get('/requirements', [ClientPortalController::class, 'requirements']);
+            Route::post('/requirements', [ClientPortalController::class, 'createRequirement']);
             Route::get('/documents', [ClientPortalController::class, 'documents']);
+            Route::post('/documents', [ClientPortalController::class, 'createDocument']);
         });

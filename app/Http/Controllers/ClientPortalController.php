@@ -7,10 +7,18 @@ use App\Models\Client;
 use App\Models\ClientPayment;
 use App\Models\Requirement;
 use App\Models\ProjectDocument;
+use App\Services\FileUploadService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 class ClientPortalController extends Controller
 {
+    protected $fileUploadService;
+
+    public function __construct(FileUploadService $fileUploadService)
+    {
+        $this->fileUploadService = $fileUploadService;
+    }
     /**
      * Get client's dashboard data
      */
@@ -190,6 +198,147 @@ class ClientPortalController extends Controller
             ->get();
 
         return response()->json($documents);
+    }
+
+    /**
+     * Create a requirement for client's project
+     */
+    public function createRequirement(Request $request)
+    {
+        $user = $request->user();
+        $client = Client::where('email', $user->email)->first();
+        
+        if (!$client) {
+            return response()->json(['message' => 'Client profile not found'], 404);
+        }
+
+        $request->validate([
+            'project_id' => 'required|exists:projects,id',
+            'title' => 'required|string|max:255',
+            'description' => 'nullable|string',
+            'type' => 'required|in:document,text',
+            'document' => 'required_if:type,document|file|mimes:pdf,doc,docx,txt|max:10240',
+            'priority' => 'nullable|in:Low,Medium,High,Critical',
+        ]);
+
+        // Verify the project belongs to this client
+        $project = Project::where('id', $request->project_id)
+            ->where('client_id', $client->id)
+            ->first();
+
+        if (!$project) {
+            return response()->json(['message' => 'Project not found or access denied'], 404);
+        }
+
+        $data = [
+            'project_id' => $request->project_id,
+            'title' => $request->title,
+            'description' => $request->description,
+            'type' => $request->type,
+            'priority' => $request->priority ?? 'Medium',
+            'status' => 'Draft',
+            'created_by' => $user->id,
+        ];
+
+        // Handle document upload
+        if ($request->type === 'document' && $request->hasFile('document')) {
+            try {
+                $file = $request->file('document');
+                
+                if (!$file->isValid()) {
+                    return response()->json([
+                        'message' => 'File upload failed: ' . $file->getErrorMessage()
+                    ], 422);
+                }
+                
+                $path = $this->fileUploadService->upload($file, 'requirements');
+                $data['document_path'] = $path;
+                $data['document_name'] = $file->getClientOriginalName();
+                $data['document_type'] = $file->getClientOriginalExtension();
+            } catch (\Exception $e) {
+                Log::error('File upload error: ' . $e->getMessage());
+                return response()->json([
+                    'message' => 'File upload failed: ' . $e->getMessage()
+                ], 500);
+            }
+        }
+
+        try {
+            $requirement = Requirement::create($data);
+            return response()->json($requirement->load(['project', 'creator']), 201);
+        } catch (\Exception $e) {
+            Log::error('Requirement creation error: ' . $e->getMessage());
+            return response()->json([
+                'message' => 'Failed to create requirement: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Create a document for client's project
+     */
+    public function createDocument(Request $request)
+    {
+        $user = $request->user();
+        $client = Client::where('email', $user->email)->first();
+        
+        if (!$client) {
+            return response()->json(['message' => 'Client profile not found'], 404);
+        }
+
+        $request->validate([
+            'project_id' => 'required|exists:projects,id',
+            'title' => 'required|string|max:255',
+            'type' => 'required|in:Document,GitHub Credentials,Server Credentials,Database Credentials,API Keys,Domain Credentials,Hosting Credentials,Other',
+            'description' => 'nullable|string',
+            'url' => 'nullable|url|max:255',
+            'notes' => 'nullable|string',
+            'file' => 'nullable|file|max:10240', // 10MB max
+        ]);
+
+        // Verify the project belongs to this client
+        $project = Project::where('id', $request->project_id)
+            ->where('client_id', $client->id)
+            ->first();
+
+        if (!$project) {
+            return response()->json(['message' => 'Project not found or access denied'], 404);
+        }
+
+        $data = [
+            'project_id' => $request->project_id,
+            'title' => $request->title,
+            'type' => $request->type,
+            'description' => $request->description,
+            'url' => $request->url,
+            'notes' => $request->notes,
+            'uploaded_by' => $user->id,
+        ];
+
+        // Handle file upload
+        if ($request->hasFile('file')) {
+            try {
+                $data['file_path'] = $this->fileUploadService->upload(
+                    $request->file('file'),
+                    'project-documents'
+                );
+            } catch (\Exception $e) {
+                Log::error('File upload error: ' . $e->getMessage());
+                return response()->json([
+                    'message' => 'File upload failed: ' . $e->getMessage()
+                ], 500);
+            }
+        }
+
+        try {
+            $document = ProjectDocument::create($data);
+            return response()->json($document->load('uploader'), 201);
+        } catch (\Exception $e) {
+            Log::error('Document creation error: ' . $e->getMessage());
+            return response()->json([
+                'message' => 'Failed to create document: ' . $e->getMessage()
+            ], 500);
+        }
     }
 
     /**
