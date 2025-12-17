@@ -226,8 +226,23 @@ class TaskService
         }
 
         // Check if timer is currently running (not paused)
-        // Timer is running if paused_at is null OR (resumed_at is set AND resumed_at >= paused_at)
-        $isRunning = !$timer->paused_at || ($timer->resumed_at && $timer->resumed_at->gte($timer->paused_at));
+        // Timer is running if paused_at is null OR (resumed_at is set AND resumed_at timestamp >= paused_at timestamp)
+        $isRunning = false;
+        if (!$timer->paused_at) {
+            // No paused_at means timer is running
+            $isRunning = true;
+        } else {
+            // paused_at exists, check if it's been resumed
+            if (!$timer->resumed_at) {
+                // paused_at exists but no resumed_at means it's paused (not running)
+                $isRunning = false;
+            } else {
+                // Compare timestamps to see which is more recent
+                $pausedTimestamp = $timer->paused_at->getTimestamp();
+                $resumedTimestamp = $timer->resumed_at->getTimestamp();
+                $isRunning = $resumedTimestamp >= $pausedTimestamp;
+            }
+        }
         
         if (!$isRunning) {
             return null; // Timer is already paused
@@ -263,8 +278,19 @@ class TaskService
         }
 
         // Check if timer is currently paused
-        // Timer is paused if paused_at is set AND (resumed_at is null OR paused_at is after resumed_at)
-        $isPaused = $timer->paused_at && (!$timer->resumed_at || $timer->paused_at->isAfter($timer->resumed_at));
+        // Timer is paused if paused_at is set AND (resumed_at is null OR paused_at timestamp > resumed_at timestamp)
+        $isPaused = false;
+        if ($timer->paused_at) {
+            if (!$timer->resumed_at) {
+                // paused_at exists but no resumed_at means it's paused
+                $isPaused = true;
+            } else {
+                // Compare timestamps to see which is more recent
+                $pausedTimestamp = $timer->paused_at->getTimestamp();
+                $resumedTimestamp = $timer->resumed_at->getTimestamp();
+                $isPaused = $pausedTimestamp > $resumedTimestamp;
+            }
+        }
         
         if (!$isPaused) {
             return null;
@@ -299,15 +325,29 @@ class TaskService
             return null;
         }
 
-        $startedAt = $timer->started_at;
         $stoppedAt = now();
         $seconds = 0;
 
+        // Check if timer is currently paused
+        $isPaused = false;
         if ($timer->paused_at) {
+            if (!$timer->resumed_at) {
+                // paused_at exists but no resumed_at means it's paused
+                $isPaused = true;
+            } else {
+                // Compare timestamps to see which is more recent
+                $pausedTimestamp = $timer->paused_at->getTimestamp();
+                $resumedTimestamp = $timer->resumed_at->getTimestamp();
+                $isPaused = $pausedTimestamp > $resumedTimestamp;
+            }
+        }
+
+        if ($isPaused) {
             // Already paused, use existing total_seconds
             $seconds = $timer->total_seconds ?? 0;
         } else {
-            // Still running, calculate seconds
+            // Still running, calculate seconds from current started_at
+            $startedAt = $timer->started_at;
             $seconds = ($timer->total_seconds ?? 0) + $startedAt->diffInSeconds($stoppedAt);
         }
 
