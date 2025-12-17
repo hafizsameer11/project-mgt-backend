@@ -39,7 +39,7 @@ class ClientPortalController extends Controller
         // Get all payments
         $payments = ClientPayment::where('client_id', $client->id)
             ->with('project')
-            ->orderBy('payment_date', 'desc')
+            ->orderBy('created_at', 'desc')
             ->get();
 
         // Get all requirements
@@ -144,7 +144,7 @@ class ClientPortalController extends Controller
 
         $payments = ClientPayment::where('client_id', $client->id)
             ->with('project')
-            ->orderBy('payment_date', 'desc')
+            ->orderBy('created_at', 'desc')
             ->get();
 
         return response()->json($payments);
