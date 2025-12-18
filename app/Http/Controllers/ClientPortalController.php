@@ -265,7 +265,34 @@ class ClientPortalController extends Controller
 
         try {
             $requirement = Requirement::create($data);
-            return response()->json($requirement->load(['project', 'creator']), 201);
+            $requirement->load(['project', 'creator']);
+            
+            // Notify admins + project team members
+            $usersToNotify = [];
+            
+            // Notify admins
+            $admins = \App\Models\User::where('role', 'Admin')->pluck('id')->toArray();
+            $usersToNotify = array_merge($usersToNotify, $admins);
+            
+            // Notify team members assigned to project
+            $project = $requirement->project;
+            if ($project && $project->teams) {
+                foreach ($project->teams as $team) {
+                    if ($team->user_id) {
+                        $usersToNotify[] = $team->user_id;
+                    }
+                }
+            }
+            
+            $usersToNotify = array_unique($usersToNotify);
+            foreach ($usersToNotify as $userId) {
+                $notifyUser = \App\Models\User::find($userId);
+                if ($notifyUser) {
+                    $notifyUser->notify(new \App\Notifications\RequirementCreatedNotification($requirement, $user));
+                }
+            }
+            
+            return response()->json($requirement, 201);
         } catch (\Exception $e) {
             Log::error('Requirement creation error: ' . $e->getMessage());
             return response()->json([

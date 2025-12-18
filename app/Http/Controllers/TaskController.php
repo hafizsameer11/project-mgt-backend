@@ -8,6 +8,11 @@ use App\Http\Resources\TaskResource;
 use App\Services\TaskService;
 use App\Services\FileUploadService;
 use App\Notifications\TaskAssignedNotification;
+use App\Notifications\TaskCreatedNotification;
+use App\Notifications\TaskUpdatedNotification;
+use App\Notifications\TaskStatusChangedNotification;
+use App\Notifications\TaskDeletedNotification;
+use App\Notifications\TaskStartedNotification;
 use Illuminate\Http\Request;
 
 class TaskController extends Controller
@@ -58,20 +63,27 @@ class TaskController extends Controller
             $task->requirements()->sync($requirementIds);
         }
         
-        // Send notification to assigned user if different from creator
+        $task->load('project', 'assignedUser', 'creator');
+        
+        // Notify assigned user (if different from creator)
         if ($task->assigned_to && $task->assigned_to !== $user->id) {
             $assignedUser = \App\Models\User::find($task->assigned_to);
             if ($assignedUser) {
-                $assignedUser->notify(new TaskAssignedNotification($task->load('project')));
+                $assignedUser->notify(new TaskAssignedNotification($task));
             }
         }
         
-        // Notify admin when task is created (if creator is not admin)
-        if ($user->role !== 'Admin') {
-            $admins = \App\Models\User::where('role', 'Admin')->get();
-            foreach ($admins as $admin) {
-                $admin->notify(new \App\Notifications\TaskCreatedNotification($task->load('project')));
+        // Notify admin + creator (if admin created task, notify admin; if user created, notify admin)
+        $admins = \App\Models\User::where('role', 'Admin')->get();
+        foreach ($admins as $admin) {
+            if ($admin->id !== $user->id) {
+                $admin->notify(new TaskCreatedNotification($task));
             }
+        }
+        
+        // Notify creator if they're not admin and task is assigned to someone else
+        if ($user->role !== 'Admin' && $task->assigned_to !== $user->id) {
+            $user->notify(new TaskCreatedNotification($task));
         }
         
         return new TaskResource($task->load('project', 'assignedUser', 'creator', 'requirements'));
@@ -94,12 +106,13 @@ class TaskController extends Controller
     {
         $data = $request->validated();
         
-        // Get task before update to check old assigned_to
+        // Get task before update to check old assigned_to and status
         $oldTask = $this->taskService->find($id);
         if (!$oldTask) {
             return response()->json(['message' => 'Task not found'], 404);
         }
         $oldAssignedTo = $oldTask->assigned_to;
+        $oldStatus = $oldTask->status;
         
         // Handle file uploads
         if ($request->hasFile('attachments')) {
@@ -120,11 +133,49 @@ class TaskController extends Controller
             $task->requirements()->sync($requirementIds);
         }
         
+        $task->load('project', 'assignedUser', 'creator');
+        $user = $request->user();
+        
         // Send notification if assigned user changed
         if (isset($data['assigned_to']) && $data['assigned_to'] != $oldAssignedTo && $data['assigned_to']) {
             $assignedUser = \App\Models\User::find($data['assigned_to']);
             if ($assignedUser) {
-                $assignedUser->notify(new TaskAssignedNotification($task->load('project')));
+                $assignedUser->notify(new TaskAssignedNotification($task));
+            }
+        }
+        
+        // Notify about task update
+        $usersToNotify = [];
+        
+        // Notify assigned user (if exists and different from updater)
+        if ($task->assigned_to && $task->assigned_to !== $user->id) {
+            $usersToNotify[] = $task->assigned_to;
+        }
+        
+        // Notify admins
+        $admins = \App\Models\User::where('role', 'Admin')->where('id', '!=', $user->id)->pluck('id')->toArray();
+        $usersToNotify = array_merge($usersToNotify, $admins);
+        
+        // Notify creator if different from updater
+        if ($task->created_by && $task->created_by !== $user->id) {
+            $usersToNotify[] = $task->created_by;
+        }
+        
+        $usersToNotify = array_unique($usersToNotify);
+        foreach ($usersToNotify as $userId) {
+            $notifyUser = \App\Models\User::find($userId);
+            if ($notifyUser) {
+                $notifyUser->notify(new TaskUpdatedNotification($task, $user));
+            }
+        }
+        
+        // Notify about status change if status changed
+        if (isset($data['status']) && $data['status'] != $oldStatus) {
+            foreach ($usersToNotify as $userId) {
+                $notifyUser = \App\Models\User::find($userId);
+                if ($notifyUser) {
+                    $notifyUser->notify(new TaskStatusChangedNotification($task, $oldStatus, $data['status'], $user));
+                }
             }
         }
         
@@ -152,19 +203,71 @@ class TaskController extends Controller
             return response()->json(['message' => 'Unauthorized: Developers cannot delete tasks'], 403);
         }
 
+        $taskTitle = $task->title;
+        $assignedUserId = $task->assigned_to;
+        $createdById = $task->created_by;
+        
         $deleted = $this->taskService->delete($id, $user->id);
         if (!$deleted) {
             return response()->json(['message' => 'Failed to delete task'], 500);
         }
+        
+        // Notify assigned user and creator about deletion
+        $usersToNotify = [];
+        if ($assignedUserId && $assignedUserId !== $user->id) {
+            $usersToNotify[] = $assignedUserId;
+        }
+        if ($createdById && $createdById !== $user->id) {
+            $usersToNotify[] = $createdById;
+        }
+        
+        // Notify admins
+        $admins = \App\Models\User::where('role', 'Admin')->where('id', '!=', $user->id)->pluck('id')->toArray();
+        $usersToNotify = array_merge($usersToNotify, $admins);
+        $usersToNotify = array_unique($usersToNotify);
+        
+        foreach ($usersToNotify as $userId) {
+            $notifyUser = \App\Models\User::find($userId);
+            if ($notifyUser) {
+                $notifyUser->notify(new TaskDeletedNotification($taskTitle, $user));
+            }
+        }
+        
         return response()->json(['message' => 'Task deleted successfully']);
     }
 
     public function startTimer(Request $request, int $id)
     {
-        $timer = $this->taskService->startTimer($id, $request->user()->id);
+        $user = $request->user();
+        $timer = $this->taskService->startTimer($id, $user->id);
         if (!$timer) {
             return response()->json(['message' => 'Task not found'], 404);
         }
+        
+        // Load task for notifications
+        $task = \App\Models\Task::with('project', 'assignedUser', 'creator')->find($id);
+        if ($task) {
+            // Notify admin + assigned user (if different from starter)
+            $usersToNotify = [];
+            
+            // Notify assigned user if different from starter
+            if ($task->assigned_to && $task->assigned_to !== $user->id) {
+                $usersToNotify[] = $task->assigned_to;
+            }
+            
+            // Notify admins
+            $admins = \App\Models\User::where('role', 'Admin')->pluck('id')->toArray();
+            $usersToNotify = array_merge($usersToNotify, $admins);
+            $usersToNotify = array_unique($usersToNotify);
+            
+            foreach ($usersToNotify as $userId) {
+                $notifyUser = \App\Models\User::find($userId);
+                if ($notifyUser) {
+                    $notifyUser->notify(new TaskStartedNotification($task, $user));
+                }
+            }
+        }
+        
         return response()->json($timer);
     }
 

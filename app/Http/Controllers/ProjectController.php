@@ -7,6 +7,8 @@ use App\Http\Requests\UpdateProjectRequest;
 use App\Http\Resources\ProjectResource;
 use App\Services\ProjectService;
 use App\Services\FileUploadService;
+use App\Notifications\ProjectCreatedNotification;
+use App\Notifications\ProjectUpdatedNotification;
 use Illuminate\Http\Request;
 
 class ProjectController extends Controller
@@ -38,7 +40,34 @@ class ProjectController extends Controller
             );
         }
         
-        $project = $this->projectService->create($data, $request->user()->id);
+        $user = $request->user();
+        $project = $this->projectService->create($data, $user->id);
+        $project->load('teams', 'client');
+        
+        // Notify admins + project team members
+        $usersToNotify = [];
+        
+        // Notify admins
+        $admins = \App\Models\User::where('role', 'Admin')->where('id', '!=', $user->id)->pluck('id')->toArray();
+        $usersToNotify = array_merge($usersToNotify, $admins);
+        
+        // Notify team members assigned to project
+        if ($project->teams) {
+            foreach ($project->teams as $team) {
+                if ($team->user_id && $team->user_id !== $user->id) {
+                    $usersToNotify[] = $team->user_id;
+                }
+            }
+        }
+        
+        $usersToNotify = array_unique($usersToNotify);
+        foreach ($usersToNotify as $userId) {
+            $notifyUser = \App\Models\User::find($userId);
+            if ($notifyUser) {
+                $notifyUser->notify(new ProjectCreatedNotification($project, $user));
+            }
+        }
+        
         return new ProjectResource($project);
     }
 
@@ -104,10 +133,38 @@ class ProjectController extends Controller
             );
         }
         
-        $project = $this->projectService->update($id, $data, $request->user()->id);
+        $user = $request->user();
+        $project = $this->projectService->update($id, $data, $user->id);
         if (!$project) {
             return response()->json(['message' => 'Project not found'], 404);
         }
+        
+        $project->load('teams', 'client');
+        
+        // Notify admins + project team members
+        $usersToNotify = [];
+        
+        // Notify admins
+        $admins = \App\Models\User::where('role', 'Admin')->where('id', '!=', $user->id)->pluck('id')->toArray();
+        $usersToNotify = array_merge($usersToNotify, $admins);
+        
+        // Notify team members assigned to project
+        if ($project->teams) {
+            foreach ($project->teams as $team) {
+                if ($team->user_id && $team->user_id !== $user->id) {
+                    $usersToNotify[] = $team->user_id;
+                }
+            }
+        }
+        
+        $usersToNotify = array_unique($usersToNotify);
+        foreach ($usersToNotify as $userId) {
+            $notifyUser = \App\Models\User::find($userId);
+            if ($notifyUser) {
+                $notifyUser->notify(new ProjectUpdatedNotification($project, $user));
+            }
+        }
+        
         return new ProjectResource($project);
     }
 

@@ -20,7 +20,7 @@ class TaskCreatedNotification extends Notification
 
     public function via(object $notifiable): array
     {
-        return ['database', \App\Notifications\Channels\PushChannel::class];
+        return ['database', \App\Notifications\Channels\PushChannel::class, \App\Notifications\Channels\ExpoPushChannel::class];
     }
 
     public function toArray(object $notifiable): array
@@ -41,6 +41,18 @@ class TaskCreatedNotification extends Notification
             'badge' => '/icon-192x192.png',
             'data' => [
                 'url' => '/tasks',
+                'task_id' => $this->task->id,
+                'type' => 'task_created',
+            ],
+        ];
+    }
+
+    public function toExpoPush(object $notifiable): array
+    {
+        return [
+            'title' => 'New Task Created',
+            'body' => 'A new task "' . $this->task->title . '" has been created.',
+            'data' => [
                 'task_id' => $this->task->id,
                 'type' => 'task_created',
             ],
