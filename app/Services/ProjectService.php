@@ -72,7 +72,7 @@ class ProjectService
             $query->where('client_id', $filters['client_id']);
         }
 
-        return $query->with('client', 'assignedBd', 'teams')->paginate(15);
+        return $query->with('client', 'assignedBd', 'teams')->paginate(100);
     }
 
     public function create(array $data, int $userId)
