@@ -16,6 +16,8 @@ class PushSubscription extends Model
         'public_key',
         'auth_token',
         'content_encoding',
+        'expo_token',
+        'device_type',
     ];
 
     public function user(): BelongsTo

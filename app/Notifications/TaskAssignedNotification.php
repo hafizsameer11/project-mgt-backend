@@ -28,7 +28,7 @@ class TaskAssignedNotification extends Notification
      */
     public function via(object $notifiable): array
     {
-        return ['database', 'mail', \App\Notifications\Channels\PushChannel::class];
+        return ['database', 'mail', \App\Notifications\Channels\PushChannel::class, \App\Notifications\Channels\ExpoPushChannel::class];
     }
 
     /**
@@ -69,6 +69,18 @@ class TaskAssignedNotification extends Notification
             'badge' => '/icon-192x192.png',
             'data' => [
                 'url' => '/tasks',
+                'task_id' => $this->task->id,
+                'type' => 'task_assigned',
+            ],
+        ];
+    }
+
+    public function toExpoPush(object $notifiable): array
+    {
+        return [
+            'title' => 'New Task Assigned',
+            'body' => 'A new task "' . $this->task->title . '" has been assigned to you.',
+            'data' => [
                 'task_id' => $this->task->id,
                 'type' => 'task_assigned',
             ],

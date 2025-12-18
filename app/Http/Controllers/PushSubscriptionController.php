@@ -59,6 +59,58 @@ class PushSubscriptionController extends Controller
         return response()->json(['message' => 'Subscription removed successfully']);
     }
 
+    /**
+     * Register Expo push token
+     */
+    public function storeExpo(Request $request)
+    {
+        $request->validate([
+            'token' => 'required|string',
+            'device_type' => 'required|in:ios,android',
+        ]);
+
+        $user = $request->user();
+
+        // Check if subscription already exists
+        $subscription = PushSubscription::where('user_id', $user->id)
+            ->where('expo_token', $request->token)
+            ->first();
+
+        if ($subscription) {
+            // Update existing subscription
+            $subscription->update([
+                'device_type' => $request->device_type,
+            ]);
+        } else {
+            // Create new subscription
+            PushSubscription::create([
+                'user_id' => $user->id,
+                'expo_token' => $request->token,
+                'device_type' => $request->device_type,
+            ]);
+        }
+
+        return response()->json(['message' => 'Expo push token registered successfully']);
+    }
+
+    /**
+     * Unregister Expo push token
+     */
+    public function destroyExpo(Request $request)
+    {
+        $request->validate([
+            'token' => 'required|string',
+        ]);
+
+        $user = $request->user();
+
+        PushSubscription::where('user_id', $user->id)
+            ->where('expo_token', $request->token)
+            ->delete();
+
+        return response()->json(['message' => 'Expo push token removed successfully']);
+    }
+
     public function getPublicKey()
     {
         $publicKey = env('VAPID_PUBLIC_KEY');
