@@ -134,7 +134,7 @@ class TaskService
             $query->where('project_id', $filters['project_id']);
         }
 
-        return $query->with('project', 'assignedUser', 'creator')->paginate(15);
+        return $query->with('project', 'assignedUser', 'creator')->paginate(150);
     }
 
     public function create(array $data, int $userId)

@@ -38,6 +38,7 @@ use App\Http\Controllers\FinancialReportController;
 use App\Http\Controllers\RequirementController;
 use App\Http\Controllers\ProjectPhaseController;
 use App\Http\Controllers\ClientPortalController;
+use App\Http\Controllers\NotificationController;
 
 /*
 |--------------------------------------------------------------------------
