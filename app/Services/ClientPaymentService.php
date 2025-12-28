@@ -30,6 +30,11 @@ class ClientPaymentService
         } else {
             $data['status'] = 'Unpaid';
         }
+        
+        // Set payment_date if amount_paid is provided and payment_date is not set
+        if (isset($data['amount_paid']) && $data['amount_paid'] > 0 && !isset($data['payment_date'])) {
+            $data['payment_date'] = now()->toDateString();
+        }
 
         $payment = $this->paymentRepository->create($data);
         $this->logActivity($payment, $userId, 'created', null, $data);
@@ -57,6 +62,14 @@ class ClientPaymentService
                 $data['status'] = 'Partial';
             } else {
                 $data['status'] = 'Unpaid';
+            }
+            
+            // Set payment_date when amount_paid is updated (if not already set or if amount increased)
+            if ($data['amount_paid'] > ($payment->amount_paid ?? 0)) {
+                // Payment amount increased, set payment_date to today if not provided
+                if (!isset($data['payment_date'])) {
+                    $data['payment_date'] = now()->toDateString();
+                }
             }
         }
 

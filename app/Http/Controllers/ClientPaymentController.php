@@ -65,6 +65,7 @@ class ClientPaymentController extends Controller
     {
         $request->validate([
             'amount_paid' => 'nullable|numeric|min:0',
+            'payment_date' => 'nullable|date',
             'status' => 'nullable|in:Paid,Unpaid,Partial',
             'notes' => 'nullable|string',
         ]);

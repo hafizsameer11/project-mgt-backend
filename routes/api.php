@@ -176,6 +176,10 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::post('/expenses/{id}/approve', [ExpenseController::class, 'approve']);
             Route::post('/expenses/{id}/reject', [ExpenseController::class, 'reject']);
             Route::apiResource('expense-categories', ExpenseCategoryController::class);
+            
+            // Planned Expenses
+            Route::apiResource('planned-expenses', \App\Http\Controllers\PlannedExpenseController::class);
+            Route::get('/planned-expenses/monthly-summary', [\App\Http\Controllers\PlannedExpenseController::class, 'monthlySummary']);
 
             // Vendor Management
             Route::apiResource('vendors', VendorController::class);

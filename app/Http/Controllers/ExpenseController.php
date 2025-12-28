@@ -19,7 +19,7 @@ class ExpenseController extends Controller
 
     public function index(Request $request)
     {
-        $query = Expense::with('user', 'category', 'project', 'approver');
+        $query = Expense::with(['user', 'category', 'project', 'approver']);
 
         if ($request->has('user_id')) {
             $query->where('user_id', $request->user_id);
@@ -32,6 +32,15 @@ class ExpenseController extends Controller
         }
 
         $expenses = $query->orderBy('expense_date', 'desc')->paginate(15);
+        
+        // Ensure categories are loaded properly
+        $expenses->getCollection()->transform(function ($expense) {
+            if ($expense->category) {
+                $expense->category_name = $expense->category->name;
+            }
+            return $expense;
+        });
+        
         return response()->json($expenses);
     }
 

@@ -44,7 +44,7 @@ class PaymentRequestNotification extends Notification
         if ($this->action === 'created') {
             return [
                 'title' => 'New Payment Request',
-                'body' => $teamMember . ' has requested payment of $' . $amount,
+                'body' => $teamMember . ' has requested payment of PKR ' . $amount,
                 'icon' => '/icon-192x192.png',
                 'badge' => '/icon-192x192.png',
                 'data' => [
@@ -56,7 +56,7 @@ class PaymentRequestNotification extends Notification
         } elseif ($this->action === 'approved') {
             return [
                 'title' => 'Payment Request Approved',
-                'body' => 'Your payment request of $' . $amount . ' has been approved',
+                'body' => 'Your payment request of PKR ' . $amount . ' has been approved',
                 'icon' => '/icon-192x192.png',
                 'badge' => '/icon-192x192.png',
                 'data' => [
@@ -68,7 +68,7 @@ class PaymentRequestNotification extends Notification
         } else {
             return [
                 'title' => 'Payment Request Rejected',
-                'body' => 'Your payment request of $' . $amount . ' has been rejected' . ($this->paymentRequest->rejection_reason ? ': ' . substr($this->paymentRequest->rejection_reason, 0, 50) : ''),
+                'body' => 'Your payment request of PKR ' . $amount . ' has been rejected' . ($this->paymentRequest->rejection_reason ? ': ' . substr($this->paymentRequest->rejection_reason, 0, 50) : ''),
                 'icon' => '/icon-192x192.png',
                 'badge' => '/icon-192x192.png',
                 'data' => [

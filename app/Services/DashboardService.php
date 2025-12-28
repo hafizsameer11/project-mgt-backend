@@ -58,6 +58,19 @@ class DashboardService
             ],
             'revenue' => [
                 'total' => \App\Models\ClientPayment::sum('amount_paid'),
+                'current_month' => \App\Models\ClientPayment::where(function($query) {
+                    $query->where(function($q) {
+                        // Use payment_date if available
+                        $q->whereNotNull('payment_date')
+                          ->whereMonth('payment_date', now()->month)
+                          ->whereYear('payment_date', now()->year);
+                    })->orWhere(function($q) {
+                        // Fallback to created_at for records without payment_date
+                        $q->whereNull('payment_date')
+                          ->whereMonth('created_at', now()->month)
+                          ->whereYear('created_at', now()->year);
+                    });
+                })->where('amount_paid', '>', 0)->sum('amount_paid'),
                 'pending' => $this->clientPaymentRepository->getPendingPayments()
                     ->sum('remaining_amount'),
             ],
@@ -70,13 +83,22 @@ class DashboardService
 
     public function getCharts()
     {
-        // Monthly Revenue - Last 12 months
+        // Monthly Revenue - Last 12 months (use payment_date if available, otherwise created_at)
         $monthlyRevenue = \App\Models\ClientPayment::select(
-                DB::raw('DATE_FORMAT(created_at, "%Y-%m") as month'),
-                DB::raw('DATE_FORMAT(created_at, "%b %Y") as month_label'),
+                DB::raw('COALESCE(DATE_FORMAT(payment_date, "%Y-%m"), DATE_FORMAT(created_at, "%Y-%m")) as month'),
+                DB::raw('COALESCE(DATE_FORMAT(payment_date, "%b %Y"), DATE_FORMAT(created_at, "%b %Y")) as month_label'),
                 DB::raw('SUM(amount_paid) as total')
             )
-            ->where('created_at', '>=', now()->subMonths(12))
+            ->where(function($query) {
+                $query->where(function($q) {
+                    $q->whereNotNull('payment_date')
+                      ->where('payment_date', '>=', now()->subMonths(12)->startOfMonth());
+                })->orWhere(function($q) {
+                    $q->whereNull('payment_date')
+                      ->where('created_at', '>=', now()->subMonths(12)->startOfMonth());
+                });
+            })
+            ->where('amount_paid', '>', 0)
             ->groupBy('month', 'month_label')
             ->orderBy('month')
             ->get()
@@ -135,13 +157,22 @@ class DashboardService
                 ];
             });
 
-        // Revenue by Month (Last 6 months)
+        // Revenue by Month (Last 6 months) - use payment_date if available
         $revenueByMonth = \App\Models\ClientPayment::select(
-                DB::raw('DATE_FORMAT(created_at, "%Y-%m") as month'),
-                DB::raw('DATE_FORMAT(created_at, "%b") as month_name'),
+                DB::raw('COALESCE(DATE_FORMAT(payment_date, "%Y-%m"), DATE_FORMAT(created_at, "%Y-%m")) as month'),
+                DB::raw('COALESCE(DATE_FORMAT(payment_date, "%b"), DATE_FORMAT(created_at, "%b")) as month_name'),
                 DB::raw('SUM(amount_paid) as revenue')
             )
-            ->where('created_at', '>=', now()->subMonths(6))
+            ->where(function($query) {
+                $query->where(function($q) {
+                    $q->whereNotNull('payment_date')
+                      ->where('payment_date', '>=', now()->subMonths(6)->startOfMonth());
+                })->orWhere(function($q) {
+                    $q->whereNull('payment_date')
+                      ->where('created_at', '>=', now()->subMonths(6)->startOfMonth());
+                });
+            })
+            ->where('amount_paid', '>', 0)
             ->groupBy('month', 'month_name')
             ->orderBy('month')
             ->get()
