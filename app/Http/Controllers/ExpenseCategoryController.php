@@ -7,9 +7,20 @@ use Illuminate\Http\Request;
 
 class ExpenseCategoryController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        $categories = ExpenseCategory::where('is_active', true)->get();
+        // If include_inactive is true, return all categories, otherwise only active ones
+        if ($request->get('include_inactive', false)) {
+            $categories = ExpenseCategory::orderBy('name')->get();
+        } else {
+            $categories = ExpenseCategory::where('is_active', true)->orderBy('name')->get();
+            
+            // If no active categories exist, return all categories as fallback
+            if ($categories->isEmpty()) {
+                $categories = ExpenseCategory::orderBy('name')->get();
+            }
+        }
+        
         return response()->json($categories);
     }
 
