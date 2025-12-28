@@ -10,6 +10,8 @@ class PmPaymentHistory extends Model
 {
     use HasFactory;
 
+    protected $table = 'pm_payment_histories';
+
     protected $fillable = [
         'project_pm_payment_id',
         'amount',
