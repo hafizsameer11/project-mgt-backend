@@ -10,6 +10,8 @@ class DeveloperPaymentHistory extends Model
 {
     use HasFactory;
 
+    protected $table = 'developer_payment_histories';
+
     protected $fillable = [
         'developer_payment_id',
         'amount',

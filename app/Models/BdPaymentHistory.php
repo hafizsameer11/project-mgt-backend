@@ -10,12 +10,15 @@ class BdPaymentHistory extends Model
 {
     use HasFactory;
 
+    protected $table = 'bd_payment_histories';
+
     protected $fillable = [
         'bd_payment_id',
         'amount',
         'payment_date',
         'notes',
         'invoice_path',
+        'invoice_no',
     ];
 
     protected $casts = [
