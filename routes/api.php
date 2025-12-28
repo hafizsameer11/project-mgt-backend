@@ -180,6 +180,9 @@ Route::middleware('auth:sanctum')->group(function () {
             // Planned Expenses
             Route::apiResource('planned-expenses', \App\Http\Controllers\PlannedExpenseController::class);
             Route::get('/planned-expenses/monthly-summary', [\App\Http\Controllers\PlannedExpenseController::class, 'monthlySummary']);
+            
+            // Income Management
+            Route::apiResource('incomes', \App\Http\Controllers\IncomeController::class);
 
             // Vendor Management
             Route::apiResource('vendors', VendorController::class);

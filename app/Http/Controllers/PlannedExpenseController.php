@@ -146,7 +146,7 @@ class PlannedExpenseController extends Controller
             ->sum('amount');
         
         // Get income for this month (client payments) - use payment_date if available, otherwise created_at
-        $currentIncome = \App\Models\ClientPayment::where(function($query) use ($startDate, $endDate) {
+        $clientPaymentIncome = \App\Models\ClientPayment::where(function($query) use ($startDate, $endDate) {
             $query->where(function($q) use ($startDate, $endDate) {
                 // Use payment_date if available
                 $q->whereNotNull('payment_date')
@@ -157,6 +157,12 @@ class PlannedExpenseController extends Controller
                   ->whereBetween('created_at', [$startDate, $endDate]);
             });
         })->where('amount_paid', '>', 0)->sum('amount_paid');
+        
+        // Get separate income entries for this month
+        $separateIncome = \App\Models\Income::whereBetween('income_date', [$startDate, $endDate])
+            ->sum('amount');
+        
+        $currentIncome = $clientPaymentIncome + $separateIncome;
         
         // Get pending income (expected but not yet received) - based on payment records created this month
         $pendingIncome = \App\Models\ClientPayment::whereBetween('created_at', [$startDate, $endDate])
@@ -189,6 +195,8 @@ class PlannedExpenseController extends Controller
             ],
             'income' => [
                 'current' => $currentIncome,
+                'from_client_payments' => $clientPaymentIncome,
+                'from_separate_income' => $separateIncome,
                 'pending' => $pendingIncome,
                 'total_expected' => $currentIncome + $pendingIncome,
             ],

@@ -57,7 +57,7 @@ class DashboardService
                     ->pluck('count', 'status'),
             ],
             'revenue' => [
-                'total' => \App\Models\ClientPayment::sum('amount_paid'),
+                'total' => \App\Models\ClientPayment::sum('amount_paid') + \App\Models\Income::sum('amount'),
                 'current_month' => \App\Models\ClientPayment::where(function($query) {
                     $query->where(function($q) {
                         // Use payment_date if available
@@ -70,7 +70,10 @@ class DashboardService
                           ->whereMonth('created_at', now()->month)
                           ->whereYear('created_at', now()->year);
                     });
-                })->where('amount_paid', '>', 0)->sum('amount_paid'),
+                })->where('amount_paid', '>', 0)->sum('amount_paid') + 
+                \App\Models\Income::whereMonth('income_date', now()->month)
+                    ->whereYear('income_date', now()->year)
+                    ->sum('amount'),
                 'pending' => $this->clientPaymentRepository->getPendingPayments()
                     ->sum('remaining_amount'),
             ],
@@ -83,8 +86,8 @@ class DashboardService
 
     public function getCharts()
     {
-        // Monthly Revenue - Last 12 months (use payment_date if available, otherwise created_at)
-        $monthlyRevenue = \App\Models\ClientPayment::select(
+        // Monthly Revenue - Last 12 months (client payments + separate income)
+        $clientPayments = \App\Models\ClientPayment::select(
                 DB::raw('COALESCE(DATE_FORMAT(payment_date, "%Y-%m"), DATE_FORMAT(created_at, "%Y-%m")) as month'),
                 DB::raw('COALESCE(DATE_FORMAT(payment_date, "%b %Y"), DATE_FORMAT(created_at, "%b %Y")) as month_label'),
                 DB::raw('SUM(amount_paid) as total')
@@ -100,14 +103,34 @@ class DashboardService
             })
             ->where('amount_paid', '>', 0)
             ->groupBy('month', 'month_label')
-            ->orderBy('month')
-            ->get()
-            ->map(function ($item) {
-                return [
-                    'month' => $item->month_label,
-                    'total' => (float) $item->total,
-                ];
-            });
+            ->get();
+        
+        $separateIncome = \App\Models\Income::select(
+                DB::raw('DATE_FORMAT(income_date, "%Y-%m") as month'),
+                DB::raw('DATE_FORMAT(income_date, "%b %Y") as month_label'),
+                DB::raw('SUM(amount) as total')
+            )
+            ->where('income_date', '>=', now()->subMonths(12)->startOfMonth())
+            ->groupBy('month', 'month_label')
+            ->get();
+        
+        // Merge and combine by month
+        $monthlyRevenue = collect();
+        $allMonths = $clientPayments->pluck('month')->merge($separateIncome->pluck('month'))->unique();
+        
+        foreach ($allMonths as $month) {
+            $clientTotal = $clientPayments->where('month', $month)->first()->total ?? 0;
+            $incomeTotal = $separateIncome->where('month', $month)->first()->total ?? 0;
+            $monthLabel = $clientPayments->where('month', $month)->first()->month_label 
+                ?? $separateIncome->where('month', $month)->first()->month_label;
+            
+            $monthlyRevenue->push([
+                'month' => $monthLabel,
+                'total' => (float) $clientTotal + (float) $incomeTotal,
+            ]);
+        }
+        
+        $monthlyRevenue = $monthlyRevenue->sortBy('month')->values();
 
         // Lead Status Distribution
         $leadStatus = \App\Models\Lead::select('lead_status', DB::raw('count(*) as count'))
@@ -157,8 +180,8 @@ class DashboardService
                 ];
             });
 
-        // Revenue by Month (Last 6 months) - use payment_date if available
-        $revenueByMonth = \App\Models\ClientPayment::select(
+        // Revenue by Month (Last 6 months) - client payments + separate income
+        $clientPayments6Months = \App\Models\ClientPayment::select(
                 DB::raw('COALESCE(DATE_FORMAT(payment_date, "%Y-%m"), DATE_FORMAT(created_at, "%Y-%m")) as month'),
                 DB::raw('COALESCE(DATE_FORMAT(payment_date, "%b"), DATE_FORMAT(created_at, "%b")) as month_name'),
                 DB::raw('SUM(amount_paid) as revenue')
@@ -174,14 +197,34 @@ class DashboardService
             })
             ->where('amount_paid', '>', 0)
             ->groupBy('month', 'month_name')
-            ->orderBy('month')
-            ->get()
-            ->map(function ($item) {
-                return [
-                    'month' => $item->month_name,
-                    'revenue' => (float) $item->revenue,
-                ];
-            });
+            ->get();
+        
+        $separateIncome6Months = \App\Models\Income::select(
+                DB::raw('DATE_FORMAT(income_date, "%Y-%m") as month'),
+                DB::raw('DATE_FORMAT(income_date, "%b") as month_name'),
+                DB::raw('SUM(amount) as revenue')
+            )
+            ->where('income_date', '>=', now()->subMonths(6)->startOfMonth())
+            ->groupBy('month', 'month_name')
+            ->get();
+        
+        // Merge and combine by month
+        $revenueByMonth = collect();
+        $allMonths6 = $clientPayments6Months->pluck('month')->merge($separateIncome6Months->pluck('month'))->unique();
+        
+        foreach ($allMonths6 as $month) {
+            $clientRevenue = $clientPayments6Months->where('month', $month)->first()->revenue ?? 0;
+            $incomeRevenue = $separateIncome6Months->where('month', $month)->first()->revenue ?? 0;
+            $monthName = $clientPayments6Months->where('month', $month)->first()->month_name 
+                ?? $separateIncome6Months->where('month', $month)->first()->month_name;
+            
+            $revenueByMonth->push([
+                'month' => $monthName,
+                'revenue' => (float) $clientRevenue + (float) $incomeRevenue,
+            ]);
+        }
+        
+        $revenueByMonth = $revenueByMonth->sortBy('month')->values();
 
         return [
             'monthly_revenue' => $monthlyRevenue,
