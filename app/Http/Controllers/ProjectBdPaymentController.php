@@ -135,6 +135,51 @@ class ProjectBdPaymentController extends Controller
         });
     }
 
+    public function markAsPaid(Request $request, int $id)
+    {
+        $request->validate([
+            'payment_date' => 'nullable|date',
+            'notes' => 'nullable|string',
+        ]);
+
+        return DB::transaction(function () use ($request, $id) {
+            $payment = ProjectBdPayment::with('project', 'bd')->find($id);
+            if (!$payment) {
+                return response()->json(['message' => 'BD Payment not found'], 404);
+            }
+
+            $remainingAmount = $payment->remaining_amount;
+            if ($remainingAmount <= 0) {
+                return response()->json(['message' => 'Payment is already fully paid'], 422);
+            }
+
+            $oldAmount = $payment->amount_paid;
+            $newAmount = $oldAmount + $remainingAmount;
+
+            $payment->update(['amount_paid' => $newAmount]);
+            $payment->updateStatus();
+
+            // Generate invoice for this payment
+            $invoiceNo = 'INV-BD-' . str_pad($payment->id, 6, '0', STR_PAD_LEFT) . '-' . str_pad(BdPaymentHistory::where('bd_payment_id', $id)->count() + 1, 3, '0', STR_PAD_LEFT);
+            
+            $paymentDate = $request->payment_date ?? now();
+            $invoicePath = $this->invoiceService->generateBdPaymentInvoice($payment, $invoiceNo, $remainingAmount, $paymentDate);
+
+            $history = BdPaymentHistory::create([
+                'bd_payment_id' => $id,
+                'amount' => $remainingAmount,
+                'payment_date' => $paymentDate,
+                'notes' => $request->notes ?? 'Marked as paid',
+                'invoice_path' => $invoicePath,
+            ]);
+
+            return response()->json([
+                'message' => 'Payment marked as paid successfully',
+                'payment' => $payment->load('project', 'bd', 'paymentHistory')
+            ]);
+        });
+    }
+
     public function generateInvoice(int $id)
     {
         $payment = ProjectBdPayment::with('project', 'bd', 'paymentHistory')->find($id);

@@ -152,6 +152,52 @@ class ProjectPmPaymentController extends Controller
         });
     }
 
+    public function markAsPaid(Request $request, int $id)
+    {
+        $request->validate([
+            'payment_date' => 'nullable|date',
+            'notes' => 'nullable|string',
+        ]);
+
+        return DB::transaction(function () use ($request, $id) {
+            $payment = ProjectPmPayment::with('project', 'pm')->find($id);
+            if (!$payment) {
+                return response()->json(['message' => 'PM Payment not found'], 404);
+            }
+
+            $remainingAmount = $payment->remaining_amount;
+            if ($remainingAmount <= 0) {
+                return response()->json(['message' => 'Payment is already fully paid'], 422);
+            }
+
+            $oldAmount = $payment->amount_paid;
+            $newAmount = $oldAmount + $remainingAmount;
+
+            $payment->update(['amount_paid' => $newAmount]);
+            $payment->updateStatus();
+
+            // Generate invoice for this payment
+            $invoiceNo = 'INV-PM-' . str_pad($payment->id, 6, '0', STR_PAD_LEFT) . '-' . str_pad(PmPaymentHistory::where('project_pm_payment_id', $id)->count() + 1, 3, '0', STR_PAD_LEFT);
+            
+            $paymentDate = $request->payment_date ?? now();
+            $invoicePath = $this->invoiceService->generatePmPaymentInvoice($payment, $invoiceNo, $remainingAmount, $paymentDate);
+
+            $history = PmPaymentHistory::create([
+                'project_pm_payment_id' => $id,
+                'amount' => $remainingAmount,
+                'payment_date' => $paymentDate,
+                'notes' => $request->notes ?? 'Marked as paid',
+                'invoice_path' => $invoicePath,
+                'invoice_no' => $invoiceNo,
+            ]);
+
+            return response()->json([
+                'message' => 'Payment marked as paid successfully',
+                'payment' => $payment->load('project', 'pm', 'paymentHistory')
+            ]);
+        });
+    }
+
     public function generateInvoice(int $id)
     {
         $payment = ProjectPmPayment::with('project', 'pm', 'paymentHistory')->find($id);

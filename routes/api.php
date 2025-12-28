@@ -98,6 +98,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/developer-payments', [DeveloperPaymentController::class, 'store']);
     Route::put('/developer-payments/{id}', [DeveloperPaymentController::class, 'update']);
     Route::post('/developer-payments/{id}/add-payment', [DeveloperPaymentController::class, 'addPayment']);
+    Route::post('/developer-payments/{id}/mark-as-paid', [DeveloperPaymentController::class, 'markAsPaid']);
     Route::get('/developer-payments/{id}/invoice', [DeveloperPaymentController::class, 'generateInvoice']);
     Route::get('/developer-payments/{id}/invoice/download', [DeveloperPaymentController::class, 'downloadInvoice']);
 
@@ -159,6 +160,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/project-bd-payments', [ProjectBdPaymentController::class, 'store']);
     Route::put('/project-bd-payments/{id}', [ProjectBdPaymentController::class, 'update']);
     Route::post('/project-bd-payments/{id}/add-payment', [ProjectBdPaymentController::class, 'addPayment']);
+    Route::post('/project-bd-payments/{id}/mark-as-paid', [ProjectBdPaymentController::class, 'markAsPaid']);
     Route::get('/project-bd-payments/{id}/invoice', [ProjectBdPaymentController::class, 'generateInvoice']);
     Route::get('/project-bd-payments/{id}/invoice/download', [ProjectBdPaymentController::class, 'downloadInvoice']);
 
@@ -168,7 +170,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/project-pm-payments', [ProjectPmPaymentController::class, 'store']);
     Route::put('/project-pm-payments/{id}', [ProjectPmPaymentController::class, 'update']);
     Route::post('/project-pm-payments/{id}/add-payment', [ProjectPmPaymentController::class, 'addPayment']);
-            Route::get('/project-pm-payments/{id}/invoice', [ProjectPmPaymentController::class, 'generateInvoice']);
+    Route::post('/project-pm-payments/{id}/mark-as-paid', [ProjectPmPaymentController::class, 'markAsPaid']);
+    Route::get('/project-pm-payments/{id}/invoice', [ProjectPmPaymentController::class, 'generateInvoice']);
 
             // Expense Management
             Route::apiResource('expenses', ExpenseController::class);

@@ -37,6 +37,69 @@ class DashboardService
 
     public function getStats()
     {
+        $currentMonth = now()->month;
+        $currentYear = now()->year;
+        $startDate = now()->startOfMonth();
+        $endDate = now()->endOfMonth();
+
+        // Calculate current month income
+        $clientPaymentIncome = \App\Models\ClientPayment::where(function($query) use ($currentMonth, $currentYear) {
+            $query->where(function($q) use ($currentMonth, $currentYear) {
+                $q->whereNotNull('payment_date')
+                  ->whereMonth('payment_date', $currentMonth)
+                  ->whereYear('payment_date', $currentYear);
+            })->orWhere(function($q) use ($currentMonth, $currentYear) {
+                $q->whereNull('payment_date')
+                  ->whereMonth('created_at', $currentMonth)
+                  ->whereYear('created_at', $currentYear);
+            });
+        })->where('amount_paid', '>', 0)->sum('amount_paid');
+        
+        $separateIncome = \App\Models\Income::whereMonth('income_date', $currentMonth)
+            ->whereYear('income_date', $currentYear)
+            ->sum('amount');
+        
+        $totalIncome = $clientPaymentIncome + $separateIncome;
+
+        // Calculate planned expenses for current month
+        $plannedExpenses = \App\Models\PlannedExpense::with('category')
+            ->where('is_active', true)
+            ->get()
+            ->filter(function ($expense) use ($currentYear, $currentMonth) {
+                return $expense->appliesToMonth($currentYear, $currentMonth);
+            });
+        $totalPlannedExpenses = $plannedExpenses->sum('amount');
+
+        // Calculate actual expenses for current month
+        // Regular expenses - count submitted, approved, and paid expenses
+        $regularExpenses = \App\Models\Expense::whereBetween('expense_date', [$startDate, $endDate])
+            ->whereIn('status', ['submitted', 'approved', 'paid'])
+            ->sum('amount');
+
+        // Developer payments (from payment history)
+        $developerPayments = \App\Models\DeveloperPaymentHistory::whereBetween('payment_date', [$startDate, $endDate])
+            ->sum('amount');
+
+        // PM payments (from payment history)
+        $pmPayments = \App\Models\PmPaymentHistory::whereBetween('payment_date', [$startDate, $endDate])
+            ->sum('amount');
+
+        // BD payments (from payment history)
+        $bdPayments = \App\Models\BdPaymentHistory::whereBetween('payment_date', [$startDate, $endDate])
+            ->sum('amount');
+
+        // Vendor payments
+        $vendorPayments = \App\Models\VendorPayment::whereBetween('payment_date', [$startDate, $endDate])
+            ->sum('amount');
+
+        $totalActualExpenses = $regularExpenses + $developerPayments + $pmPayments + $bdPayments + $vendorPayments;
+        $totalExpenses = $totalPlannedExpenses + $totalActualExpenses;
+
+        // Calculate required amount and balance
+        $requiredAmount = $totalExpenses;
+        $incomeGap = $requiredAmount - $totalIncome;
+        $currentBalance = $totalIncome - $totalActualExpenses; // Balance after actual expenses
+
         return [
             'leads' => [
                 'total' => \App\Models\Lead::count(),
@@ -58,24 +121,32 @@ class DashboardService
             ],
             'revenue' => [
                 'total' => \App\Models\ClientPayment::sum('amount_paid') + \App\Models\Income::sum('amount'),
-                'current_month' => \App\Models\ClientPayment::where(function($query) {
-                    $query->where(function($q) {
-                        // Use payment_date if available
-                        $q->whereNotNull('payment_date')
-                          ->whereMonth('payment_date', now()->month)
-                          ->whereYear('payment_date', now()->year);
-                    })->orWhere(function($q) {
-                        // Fallback to created_at for records without payment_date
-                        $q->whereNull('payment_date')
-                          ->whereMonth('created_at', now()->month)
-                          ->whereYear('created_at', now()->year);
-                    });
-                })->where('amount_paid', '>', 0)->sum('amount_paid') + 
-                \App\Models\Income::whereMonth('income_date', now()->month)
-                    ->whereYear('income_date', now()->year)
-                    ->sum('amount'),
+                'current_month' => $totalIncome,
                 'pending' => $this->clientPaymentRepository->getPendingPayments()
                     ->sum('remaining_amount'),
+            ],
+            'financial' => [
+                'income' => [
+                    'total' => $totalIncome,
+                    'from_client_payments' => $clientPaymentIncome,
+                    'from_separate_income' => $separateIncome,
+                ],
+                'expenses' => [
+                    'planned' => $totalPlannedExpenses,
+                    'actual' => $totalActualExpenses,
+                    'breakdown' => [
+                        'regular_expenses' => $regularExpenses,
+                        'developer_payments' => $developerPayments,
+                        'pm_payments' => $pmPayments,
+                        'bd_payments' => $bdPayments,
+                        'vendor_payments' => $vendorPayments,
+                    ],
+                    'total' => $totalExpenses,
+                ],
+                'required_amount' => $requiredAmount,
+                'income_gap' => $incomeGap,
+                'current_balance' => $currentBalance,
+                'is_sufficient' => $totalIncome >= $requiredAmount,
             ],
             'developer_balances' => $this->developerPaymentRepository->getOutstandingBalances()
                 ->sum('remaining_amount'),

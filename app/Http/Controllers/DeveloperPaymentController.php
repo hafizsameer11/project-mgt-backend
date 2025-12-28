@@ -86,6 +86,41 @@ class DeveloperPaymentController extends Controller
         return response()->json($payment);
     }
 
+    public function markAsPaid(Request $request, int $id)
+    {
+        $request->validate([
+            'payment_date' => 'nullable|date',
+            'notes' => 'nullable|string',
+        ]);
+
+        $payment = \App\Models\DeveloperPayment::find($id);
+        if (!$payment) {
+            return response()->json(['message' => 'Payment record not found'], 404);
+        }
+
+        $remainingAmount = $payment->remaining_amount;
+        if ($remainingAmount <= 0) {
+            return response()->json(['message' => 'Payment is already fully paid'], 422);
+        }
+
+        // Create payment history entry for the remaining amount
+        $paymentData = [
+            'amount' => $remainingAmount,
+            'payment_date' => $request->payment_date ?? now()->toDateString(),
+            'notes' => $request->notes ?? 'Marked as paid',
+        ];
+
+        $payment = $this->paymentService->addPayment($id, $paymentData, $request->user()->id);
+        if (!$payment) {
+            return response()->json(['message' => 'Error marking payment as paid'], 500);
+        }
+
+        return response()->json([
+            'message' => 'Payment marked as paid successfully',
+            'payment' => $payment
+        ]);
+    }
+
     public function generateInvoice(int $id)
     {
         $payment = \App\Models\DeveloperPayment::find($id);
