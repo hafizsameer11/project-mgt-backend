@@ -37,10 +37,19 @@ class DashboardService
 
     public function getStats()
     {
-        $currentMonth = now()->month;
-        $currentYear = now()->year;
-        $startDate = now()->startOfMonth();
-        $endDate = now()->endOfMonth();
+        // If current month is December 2025, use January 2026 data instead
+        $now = now();
+        if ($now->year == 2025 && $now->month == 12) {
+            $currentMonth = 1;
+            $currentYear = 2026;
+            $startDate = \Carbon\Carbon::create(2026, 1, 1)->startOfMonth();
+            $endDate = \Carbon\Carbon::create(2026, 1, 31)->endOfMonth();
+        } else {
+            $currentMonth = $now->month;
+            $currentYear = $now->year;
+            $startDate = $now->startOfMonth();
+            $endDate = $now->endOfMonth();
+        }
 
         // Calculate current month income
         $clientPaymentIncome = \App\Models\ClientPayment::where(function($query) use ($currentMonth, $currentYear) {
