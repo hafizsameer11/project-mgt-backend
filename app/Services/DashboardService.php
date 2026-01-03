@@ -81,24 +81,29 @@ class DashboardService
 
         // Calculate actual expenses for current month
         // Regular expenses - count submitted, approved, and paid expenses
-        $regularExpenses = \App\Models\Expense::whereBetween('expense_date', [$startDate, $endDate])
+        $regularExpenses = \App\Models\Expense::whereMonth('expense_date', $currentMonth)
+            ->whereYear('expense_date', $currentYear)
             ->whereIn('status', ['submitted', 'approved', 'paid'])
             ->sum('amount');
 
         // Developer payments (from payment history)
-        $developerPayments = \App\Models\DeveloperPaymentHistory::whereBetween('payment_date', [$startDate, $endDate])
+        $developerPayments = \App\Models\DeveloperPaymentHistory::whereMonth('payment_date', $currentMonth)
+            ->whereYear('payment_date', $currentYear)
             ->sum('amount');
 
         // PM payments (from payment history)
-        $pmPayments = \App\Models\PmPaymentHistory::whereBetween('payment_date', [$startDate, $endDate])
+        $pmPayments = \App\Models\PmPaymentHistory::whereMonth('payment_date', $currentMonth)
+            ->whereYear('payment_date', $currentYear)
             ->sum('amount');
 
         // BD payments (from payment history)
-        $bdPayments = \App\Models\BdPaymentHistory::whereBetween('payment_date', [$startDate, $endDate])
+        $bdPayments = \App\Models\BdPaymentHistory::whereMonth('payment_date', $currentMonth)
+            ->whereYear('payment_date', $currentYear)
             ->sum('amount');
 
         // Vendor payments
-        $vendorPayments = \App\Models\VendorPayment::whereBetween('payment_date', [$startDate, $endDate])
+        $vendorPayments = \App\Models\VendorPayment::whereMonth('payment_date', $currentMonth)
+            ->whereYear('payment_date', $currentYear)
             ->sum('amount');
 
         $totalActualExpenses = $regularExpenses + $developerPayments + $pmPayments + $bdPayments + $vendorPayments;
