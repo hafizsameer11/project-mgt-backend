@@ -39,6 +39,7 @@ use App\Http\Controllers\RequirementController;
 use App\Http\Controllers\ProjectPhaseController;
 use App\Http\Controllers\ClientPortalController;
 use App\Http\Controllers\NotificationController;
+use App\Http\Controllers\AdvancePaymentController;
 
 /*
 |--------------------------------------------------------------------------
@@ -186,6 +187,10 @@ Route::middleware('auth:sanctum')->group(function () {
             
             // Income Management
             Route::apiResource('incomes', \App\Http\Controllers\IncomeController::class);
+            
+            // Advance Payments (Khata)
+            Route::apiResource('advance-payments', AdvancePaymentController::class);
+            Route::get('/advance-payments/monthly-summary', [AdvancePaymentController::class, 'monthlySummary']);
 
             // Vendor Management
             Route::apiResource('vendors', VendorController::class);

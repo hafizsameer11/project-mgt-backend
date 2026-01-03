@@ -48,7 +48,7 @@ class ClientPaymentController extends Controller
 
     public function store(Request $request)
     {
-        $request->validate([
+        $validated = $request->validate([
             'client_id' => 'required|exists:clients,id',
             'project_id' => 'required|exists:projects,id',
             'invoice_no' => 'nullable|string|max:255',
@@ -57,20 +57,20 @@ class ClientPaymentController extends Controller
             'notes' => 'nullable|string',
         ]);
 
-        $payment = $this->paymentService->create($request->validated(), $request->user()->id);
+        $payment = $this->paymentService->create($validated, $request->user()->id);
         return response()->json($payment->load('client', 'project'));
     }
 
     public function update(Request $request, int $id)
     {
-        $request->validate([
+        $validated = $request->validate([
             'amount_paid' => 'nullable|numeric|min:0',
             'payment_date' => 'nullable|date',
             'status' => 'nullable|in:Paid,Unpaid,Partial',
             'notes' => 'nullable|string',
         ]);
 
-        $payment = $this->paymentService->update($id, $request->validated(), $request->user()->id);
+        $payment = $this->paymentService->update($id, $validated, $request->user()->id);
         if (!$payment) {
             return response()->json(['message' => 'Payment not found'], 404);
         }

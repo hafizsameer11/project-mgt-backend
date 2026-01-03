@@ -106,7 +106,12 @@ class DashboardService
             ->whereYear('payment_date', $currentYear)
             ->sum('amount');
 
-        $totalActualExpenses = $regularExpenses + $developerPayments + $pmPayments + $bdPayments + $vendorPayments;
+        // Advance payments (Khata)
+        $advancePayments = \App\Models\AdvancePayment::whereMonth('payment_date', $currentMonth)
+            ->whereYear('payment_date', $currentYear)
+            ->sum('amount');
+
+        $totalActualExpenses = $regularExpenses + $developerPayments + $pmPayments + $bdPayments + $vendorPayments + $advancePayments;
         $totalExpenses = $totalPlannedExpenses + $totalActualExpenses;
 
         // Calculate required amount and balance
@@ -154,6 +159,7 @@ class DashboardService
                         'pm_payments' => $pmPayments,
                         'bd_payments' => $bdPayments,
                         'vendor_payments' => $vendorPayments,
+                        'advance_payments' => $advancePayments,
                     ],
                     'total' => $totalExpenses,
                 ],
