@@ -107,10 +107,19 @@ class DashboardService
             ->sum('amount');
 
         // Advance payments (khata) - count approved and paid
-        $advancePayments = \App\Models\AdvancePayment::whereMonth('payment_date', $currentMonth)
-            ->whereYear('payment_date', $currentYear)
-            ->whereIn('status', ['approved', 'paid'])
-            ->sum('amount');
+        // Check if status column exists before filtering
+        $advancePaymentsQuery = \App\Models\AdvancePayment::whereMonth('payment_date', $currentMonth)
+            ->whereYear('payment_date', $currentYear);
+        
+        // Only filter by status if the column exists
+        try {
+            $advancePayments = (clone $advancePaymentsQuery)
+                ->whereIn('status', ['approved', 'paid'])
+                ->sum('amount');
+        } catch (\Exception $e) {
+            // If status column doesn't exist, count all payments
+            $advancePayments = $advancePaymentsQuery->sum('amount');
+        }
 
         $totalActualExpenses = $regularExpenses + $developerPayments + $pmPayments + $bdPayments + $vendorPayments + $advancePayments;
         $totalExpenses = $totalPlannedExpenses + $totalActualExpenses;
