@@ -11,42 +11,32 @@ class AdvancePayment extends Model
     use HasFactory;
 
     protected $fillable = [
-        'advance_no',
         'user_id',
+        'monthly_salary',
         'amount',
         'currency',
         'payment_date',
-        'payment_method',
-        'monthly_salary',
         'description',
+        'status',
+        'approved_by',
+        'approved_at',
         'notes',
-        'created_by',
     ];
 
     protected $casts = [
-        'amount' => 'decimal:2',
         'monthly_salary' => 'decimal:2',
+        'amount' => 'decimal:2',
         'payment_date' => 'date',
+        'approved_at' => 'datetime',
     ];
-
-    protected static function boot()
-    {
-        parent::boot();
-
-        static::creating(function ($advancePayment) {
-            if (empty($advancePayment->advance_no)) {
-                $advancePayment->advance_no = 'ADV-' . strtoupper(uniqid());
-            }
-        });
-    }
 
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
     }
 
-    public function creator(): BelongsTo
+    public function approver(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'created_by');
+        return $this->belongsTo(User::class, 'approved_by');
     }
 }

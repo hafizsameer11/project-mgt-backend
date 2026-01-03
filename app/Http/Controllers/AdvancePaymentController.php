@@ -4,18 +4,20 @@ namespace App\Http\Controllers;
 
 use App\Models\AdvancePayment;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class AdvancePaymentController extends Controller
 {
-    /**
-     * Display a listing of the resource.
-     */
     public function index(Request $request)
     {
-        $query = AdvancePayment::with('user', 'creator');
+        $query = AdvancePayment::with('user', 'approver');
 
         if ($request->has('user_id')) {
             $query->where('user_id', $request->user_id);
+        }
+
+        if ($request->has('status')) {
+            $query->where('status', $request->status);
         }
 
         if ($request->has('month')) {
@@ -26,109 +28,137 @@ class AdvancePaymentController extends Controller
             $query->whereYear('payment_date', $request->year);
         }
 
-        $advancePayments = $query->orderBy('payment_date', 'desc')->paginate(15);
-        return response()->json($advancePayments);
+        $payments = $query->orderBy('payment_date', 'desc')->paginate(15);
+        return response()->json($payments);
     }
 
-    /**
-     * Store a newly created resource in storage.
-     */
     public function store(Request $request)
     {
         $validated = $request->validate([
             'user_id' => 'required|exists:users,id',
+            'monthly_salary' => 'nullable|numeric|min:0',
             'amount' => 'required|numeric|min:0',
             'currency' => 'nullable|string|max:10',
             'payment_date' => 'required|date',
-            'payment_method' => 'nullable|string|max:255',
-            'monthly_salary' => 'nullable|numeric|min:0',
             'description' => 'nullable|string',
+            'status' => 'nullable|in:pending,approved,paid',
             'notes' => 'nullable|string',
         ]);
 
-        $validated['created_by'] = $request->user()->id;
         $validated['currency'] = $validated['currency'] ?? 'PKR';
+        $validated['status'] = $validated['status'] ?? 'pending';
 
-        $advancePayment = AdvancePayment::create($validated);
-        return response()->json($advancePayment->load('user', 'creator'), 201);
+        $payment = AdvancePayment::create($validated);
+        return response()->json($payment->load('user', 'approver'), 201);
     }
 
-    /**
-     * Display the specified resource.
-     */
     public function show(int $id)
     {
-        $advancePayment = AdvancePayment::with('user', 'creator')->find($id);
-        if (!$advancePayment) {
+        $payment = AdvancePayment::with('user', 'approver')->find($id);
+        if (!$payment) {
             return response()->json(['message' => 'Advance payment not found'], 404);
         }
-        return response()->json($advancePayment);
+        return response()->json($payment);
     }
 
-    /**
-     * Update the specified resource in storage.
-     */
     public function update(Request $request, int $id)
     {
-        $advancePayment = AdvancePayment::find($id);
-        if (!$advancePayment) {
+        $payment = AdvancePayment::find($id);
+        if (!$payment) {
             return response()->json(['message' => 'Advance payment not found'], 404);
         }
 
         $validated = $request->validate([
+            'monthly_salary' => 'nullable|numeric|min:0',
             'amount' => 'nullable|numeric|min:0',
             'currency' => 'nullable|string|max:10',
             'payment_date' => 'nullable|date',
-            'payment_method' => 'nullable|string|max:255',
-            'monthly_salary' => 'nullable|numeric|min:0',
             'description' => 'nullable|string',
+            'status' => 'nullable|in:pending,approved,paid',
             'notes' => 'nullable|string',
         ]);
 
-        $advancePayment->update($validated);
-        return response()->json($advancePayment->load('user', 'creator'));
+        // If status is being changed to approved, set approved_by and approved_at
+        if (isset($validated['status']) && $validated['status'] === 'approved' && $payment->status !== 'approved') {
+            $validated['approved_by'] = $request->user()->id;
+            $validated['approved_at'] = now();
+        }
+
+        $payment->update($validated);
+        return response()->json($payment->load('user', 'approver'));
     }
 
-    /**
-     * Remove the specified resource from storage.
-     */
     public function destroy(int $id)
     {
-        $advancePayment = AdvancePayment::find($id);
-        if (!$advancePayment) {
+        $payment = AdvancePayment::find($id);
+        if (!$payment) {
             return response()->json(['message' => 'Advance payment not found'], 404);
         }
 
-        $advancePayment->delete();
+        $payment->delete();
         return response()->json(['message' => 'Advance payment deleted successfully']);
     }
 
-    /**
-     * Get monthly summary for a user
-     */
-    public function monthlySummary(Request $request)
+    public function approve(int $id, Request $request)
     {
-        $request->validate([
-            'user_id' => 'required|exists:users,id',
-            'month' => 'required|integer|min:1|max:12',
-            'year' => 'required|integer|min:2020',
+        $payment = AdvancePayment::find($id);
+        if (!$payment) {
+            return response()->json(['message' => 'Advance payment not found'], 404);
+        }
+
+        $payment->update([
+            'status' => 'approved',
+            'approved_by' => $request->user()->id,
+            'approved_at' => now(),
         ]);
 
-        $advancePayments = AdvancePayment::where('user_id', $request->user_id)
-            ->whereMonth('payment_date', $request->month)
-            ->whereYear('payment_date', $request->year)
+        return response()->json($payment->load('user', 'approver'));
+    }
+
+    public function markAsPaid(int $id)
+    {
+        $payment = AdvancePayment::find($id);
+        if (!$payment) {
+            return response()->json(['message' => 'Advance payment not found'], 404);
+        }
+
+        $payment->update([
+            'status' => 'paid',
+        ]);
+
+        return response()->json($payment->load('user', 'approver'));
+    }
+
+    public function getUserSummary(Request $request, int $userId)
+    {
+        $month = $request->get('month', now()->month);
+        $year = $request->get('year', now()->year);
+
+        // Get user's monthly salary (from latest advance payment or first one)
+        $latestPayment = AdvancePayment::where('user_id', $userId)
+            ->whereNotNull('monthly_salary')
+            ->where('monthly_salary', '>', 0)
+            ->orderBy('created_at', 'desc')
+            ->first();
+
+        $monthlySalary = $latestPayment ? $latestPayment->monthly_salary : 0;
+
+        // Get all advance payments for the month
+        $advancePayments = AdvancePayment::where('user_id', $userId)
+            ->whereMonth('payment_date', $month)
+            ->whereYear('payment_date', $year)
+            ->where('status', '!=', 'pending')
             ->get();
 
         $totalAdvance = $advancePayments->sum('amount');
-        $monthlySalary = $advancePayments->first()->monthly_salary ?? 0;
-        $remainingSalary = $monthlySalary > 0 ? max(0, $monthlySalary - $totalAdvance) : 0;
+        $remainingSalary = max(0, $monthlySalary - $totalAdvance);
 
         return response()->json([
-            'user_id' => $request->user_id,
-            'month' => $request->month,
-            'year' => $request->year,
-            'total_advance' => $totalAdvance,
+            'user_id' => $userId,
+            'month' => $month,
+            'year' => $year,
             'monthly_salary' => $monthlySalary,
+            'total_advance' => $totalAdvance,
             'remaining_salary' => $remainingSalary,
             'payments' => $advancePayments,
         ]);

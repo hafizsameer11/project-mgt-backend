@@ -7,9 +7,12 @@ use App\Models\Client;
 use App\Models\ClientPayment;
 use App\Models\Requirement;
 use App\Models\ProjectDocument;
+use App\Models\ProjectTeamClientAlias;
+use App\Models\Task;
 use App\Services\FileUploadService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 
 class ClientPortalController extends Controller
 {
@@ -114,6 +117,21 @@ class ClientPortalController extends Controller
             return response()->json(['message' => 'Project not found'], 404);
         }
 
+        // Apply aliases to task assigned users
+        foreach ($project->tasks as $task) {
+            if ($task->assignedUser) {
+                $team = \App\Models\Team::where('user_id', $task->assignedUser->id)->first();
+                if ($team) {
+                    $displayName = ProjectTeamClientAlias::getDisplayName(
+                        $client->id,
+                        $team->id,
+                        $project->id
+                    );
+                    $task->assigned_user_display_name = $displayName;
+                }
+            }
+        }
+
         return response()->json($project);
     }
 
@@ -134,6 +152,22 @@ class ClientPortalController extends Controller
         $tasks = \App\Models\Task::whereIn('project_id', $projectIds)
             ->with(['project', 'assignedUser'])
             ->get();
+
+        // Apply aliases to task assigned users
+        foreach ($tasks as $task) {
+            if ($task->assignedUser) {
+                $team = \App\Models\Team::where('user_id', $task->assignedUser->id)->first();
+                if ($team) {
+                    $displayName = ProjectTeamClientAlias::getDisplayName(
+                        $client->id,
+                        $team->id,
+                        $task->project_id
+                    );
+                    // Add display_name to the task object
+                    $task->assigned_user_display_name = $displayName;
+                }
+            }
+        }
 
         return response()->json($tasks);
     }
@@ -369,26 +403,191 @@ class ClientPortalController extends Controller
     }
 
     /**
-     * Get developers assigned to projects
-     * If same developer works on multiple projects, show "Developer" instead of name
+     * Create a project (client can create their own projects)
+     */
+    public function createProject(Request $request)
+    {
+        $user = $request->user();
+        $client = Client::where('email', $user->email)->first();
+        
+        if (!$client) {
+            return response()->json(['message' => 'Client profile not found'], 404);
+        }
+
+        $validated = $request->validate([
+            'title' => 'required|string|max:255',
+            'description' => 'nullable|string',
+            'budget' => 'nullable|numeric|min:0',
+            'start_date' => 'nullable|date',
+            'end_date' => 'nullable|date|after_or_equal:start_date',
+            'project_type' => 'nullable|string',
+            'priority' => 'nullable|in:Low,Medium,High,Critical',
+            'tags' => 'nullable|array',
+        ]);
+
+        $validated['client_id'] = $client->id;
+        $validated['status'] = 'Planning';
+
+        $project = Project::create($validated);
+        return response()->json($project->load('client', 'phases', 'teams.user'), 201);
+    }
+
+    /**
+     * Update a project (client can update their own projects)
+     */
+    public function updateProject(Request $request, int $id)
+    {
+        $user = $request->user();
+        $client = Client::where('email', $user->email)->first();
+        
+        if (!$client) {
+            return response()->json(['message' => 'Client profile not found'], 404);
+        }
+
+        $project = Project::where('id', $id)
+            ->where('client_id', $client->id)
+            ->first();
+
+        if (!$project) {
+            return response()->json(['message' => 'Project not found or access denied'], 404);
+        }
+
+        $validated = $request->validate([
+            'title' => 'sometimes|string|max:255',
+            'description' => 'nullable|string',
+            'budget' => 'nullable|numeric|min:0',
+            'start_date' => 'nullable|date',
+            'end_date' => 'nullable|date|after_or_equal:start_date',
+            'project_type' => 'nullable|string',
+            'priority' => 'nullable|in:Low,Medium,High,Critical',
+            'status' => 'nullable|in:Planning,In Progress,On Hold,Completed,Cancelled',
+            'tags' => 'nullable|array',
+        ]);
+
+        $project->update($validated);
+        return response()->json($project->load('client', 'phases', 'teams.user', 'tasks.assignedUser', 'requirements', 'documents'));
+    }
+
+    /**
+     * Create a task for client's project
+     */
+    public function createTask(Request $request)
+    {
+        $user = $request->user();
+        $client = Client::where('email', $user->email)->first();
+        
+        if (!$client) {
+            return response()->json(['message' => 'Client profile not found'], 404);
+        }
+
+        $validated = $request->validate([
+            'project_id' => 'required|exists:projects,id',
+            'title' => 'required|string|max:255',
+            'description' => 'nullable|string',
+            'priority' => 'nullable|in:Low,Medium,High,Critical',
+            'due_date' => 'nullable|date',
+            'estimated_hours' => 'nullable|numeric|min:0',
+        ]);
+
+        // Verify the project belongs to this client
+        $project = Project::where('id', $validated['project_id'])
+            ->where('client_id', $client->id)
+            ->first();
+
+        if (!$project) {
+            return response()->json(['message' => 'Project not found or access denied'], 404);
+        }
+
+        $validated['status'] = 'Pending';
+        $validated['created_by'] = $user->id;
+
+        $task = Task::create($validated);
+        
+        // Notify admins and project team
+        $this->notifyTaskCreated($task, $user);
+        
+        return response()->json($task->load('project', 'assignedUser', 'creator'), 201);
+    }
+
+    /**
+     * Update a task
+     */
+    public function updateTask(Request $request, int $id)
+    {
+        $user = $request->user();
+        $client = Client::where('email', $user->email)->first();
+        
+        if (!$client) {
+            return response()->json(['message' => 'Client profile not found'], 404);
+        }
+
+        $task = Task::where('id', $id)
+            ->whereHas('project', function($q) use ($client) {
+                $q->where('client_id', $client->id);
+            })
+            ->first();
+
+        if (!$task) {
+            return response()->json(['message' => 'Task not found or access denied'], 404);
+        }
+
+        $validated = $request->validate([
+            'title' => 'sometimes|string|max:255',
+            'description' => 'nullable|string',
+            'priority' => 'nullable|in:Low,Medium,High,Critical',
+            'status' => 'nullable|in:Pending,In Progress,Completed,Review,On Hold',
+            'due_date' => 'nullable|date',
+            'estimated_hours' => 'nullable|numeric|min:0',
+        ]);
+
+        $oldStatus = $task->status;
+        $task->update($validated);
+
+        // Notify on status change
+        if (isset($validated['status']) && $validated['status'] !== $oldStatus) {
+            $this->notifyTaskStatusChanged($task, $user, $oldStatus);
+        } else {
+            $this->notifyTaskUpdated($task, $user);
+        }
+
+        return response()->json($task->load('project', 'assignedUser', 'creator'));
+    }
+
+    /**
+     * Get developers assigned to projects with client aliases
      */
     private function getProjectDevelopers($projects)
     {
+        $client = null;
+        if ($projects->isNotEmpty()) {
+            $firstProject = $projects->first();
+            $client = $firstProject->client;
+        }
+
+        if (!$client) {
+            return [];
+        }
+
         $allDevelopers = [];
         
         foreach ($projects as $project) {
             // Get developers from teams assigned to project
-            // Team model represents a single team member, not a team with multiple members
             foreach ($project->teams as $team) {
-                // Load the user relationship if not already loaded
                 if (!$team->relationLoaded('user')) {
                     $team->load('user');
                 }
                 
-                if ($team->user) {
+                if ($team->user || $team->full_name) {
+                    $displayName = ProjectTeamClientAlias::getDisplayName(
+                        $client->id,
+                        $team->id,
+                        $project->id
+                    );
+                    
                     $allDevelopers[] = [
-                        'user_id' => $team->user->id,
-                        'name' => $team->user->name,
+                        'team_id' => $team->id,
+                        'user_id' => $team->user_id,
+                        'name' => $displayName,
                         'project_id' => $project->id,
                     ];
                 }
@@ -397,56 +596,134 @@ class ClientPortalController extends Controller
             // Get developers from tasks
             foreach ($project->tasks as $task) {
                 if ($task->assignedUser) {
-                    $allDevelopers[] = [
-                        'user_id' => $task->assignedUser->id,
-                        'name' => $task->assignedUser->name,
-                        'project_id' => $project->id,
-                    ];
+                    // For tasks, we need to find the team member by user_id
+                    $team = \App\Models\Team::where('user_id', $task->assignedUser->id)->first();
+                    if ($team) {
+                        $displayName = ProjectTeamClientAlias::getDisplayName(
+                            $client->id,
+                            $team->id,
+                            $project->id
+                        );
+                        
+                        $allDevelopers[] = [
+                            'team_id' => $team->id,
+                            'user_id' => $task->assignedUser->id,
+                            'name' => $displayName,
+                            'project_id' => $project->id,
+                        ];
+                    } else {
+                        // Fallback if no team record exists
+                        $allDevelopers[] = [
+                            'team_id' => null,
+                            'user_id' => $task->assignedUser->id,
+                            'name' => $task->assignedUser->name,
+                            'project_id' => $project->id,
+                        ];
+                    }
                 }
             }
         }
 
-        // Count how many projects each developer works on
-        $developerCounts = [];
-        foreach ($allDevelopers as $dev) {
-            if (!isset($developerCounts[$dev['user_id']])) {
-                $developerCounts[$dev['user_id']] = [
-                    'name' => $dev['name'],
-                    'projects' => [],
-                ];
-            }
-            if (!in_array($dev['project_id'], $developerCounts[$dev['user_id']]['projects'])) {
-                $developerCounts[$dev['user_id']]['projects'][] = $dev['project_id'];
-            }
-        }
-
-        // Format result: if developer works on multiple projects, show "Developer"
+        // Format result by project
         $result = [];
         foreach ($projects as $project) {
             $projectDevelopers = [];
+            $seenTeamIds = [];
+            
             foreach ($allDevelopers as $dev) {
-                if ($dev['project_id'] === $project->id) {
-                    $userId = $dev['user_id'];
-                    $count = count($developerCounts[$userId]['projects']);
+                if ($dev['project_id'] === $project->id && !in_array($dev['team_id'], $seenTeamIds)) {
                     $projectDevelopers[] = [
-                        'user_id' => $userId,
-                        'name' => $count > 1 ? 'Developer' : $dev['name'],
-                        'projects_count' => $count,
+                        'team_id' => $dev['team_id'],
+                        'user_id' => $dev['user_id'],
+                        'name' => $dev['name'],
                     ];
+                    if ($dev['team_id']) {
+                        $seenTeamIds[] = $dev['team_id'];
+                    }
                 }
             }
-            // Remove duplicates based on user_id
-            $uniqueDevelopers = [];
-            $seenUserIds = [];
-            foreach ($projectDevelopers as $dev) {
-                if (!in_array($dev['user_id'], $seenUserIds)) {
-                    $uniqueDevelopers[] = $dev;
-                    $seenUserIds[] = $dev['user_id'];
-                }
-            }
-            $result[$project->id] = $uniqueDevelopers;
+            
+            $result[$project->id] = $projectDevelopers;
         }
 
         return $result;
+    }
+
+    private function notifyTaskCreated($task, $user)
+    {
+        // Notify admins + project team members
+        $usersToNotify = [];
+        $admins = \App\Models\User::where('role', 'Admin')->pluck('id')->toArray();
+        $usersToNotify = array_merge($usersToNotify, $admins);
+        
+        if ($task->project && $task->project->teams) {
+            foreach ($task->project->teams as $team) {
+                if ($team->user_id) {
+                    $usersToNotify[] = $team->user_id;
+                }
+            }
+        }
+        
+        $usersToNotify = array_unique($usersToNotify);
+        foreach ($usersToNotify as $userId) {
+            $notifyUser = \App\Models\User::find($userId);
+            if ($notifyUser) {
+                $notifyUser->notify(new \App\Notifications\TaskCreatedNotification($task, $user));
+            }
+        }
+    }
+
+    private function notifyTaskUpdated($task, $user)
+    {
+        $usersToNotify = [];
+        $admins = \App\Models\User::where('role', 'Admin')->pluck('id')->toArray();
+        $usersToNotify = array_merge($usersToNotify, $admins);
+        
+        if ($task->assignedUser) {
+            $usersToNotify[] = $task->assignedUser->id;
+        }
+        
+        if ($task->project && $task->project->teams) {
+            foreach ($task->project->teams as $team) {
+                if ($team->user_id) {
+                    $usersToNotify[] = $team->user_id;
+                }
+            }
+        }
+        
+        $usersToNotify = array_unique($usersToNotify);
+        foreach ($usersToNotify as $userId) {
+            $notifyUser = \App\Models\User::find($userId);
+            if ($notifyUser) {
+                $notifyUser->notify(new \App\Notifications\TaskUpdatedNotification($task, $user));
+            }
+        }
+    }
+
+    private function notifyTaskStatusChanged($task, $user, $oldStatus)
+    {
+        $usersToNotify = [];
+        $admins = \App\Models\User::where('role', 'Admin')->pluck('id')->toArray();
+        $usersToNotify = array_merge($usersToNotify, $admins);
+        
+        if ($task->assignedUser) {
+            $usersToNotify[] = $task->assignedUser->id;
+        }
+        
+        if ($task->project && $task->project->teams) {
+            foreach ($task->project->teams as $team) {
+                if ($team->user_id) {
+                    $usersToNotify[] = $team->user_id;
+                }
+            }
+        }
+        
+        $usersToNotify = array_unique($usersToNotify);
+        foreach ($usersToNotify as $userId) {
+            $notifyUser = \App\Models\User::find($userId);
+            if ($notifyUser) {
+                $notifyUser->notify(new \App\Notifications\TaskStatusChangedNotification($task, $user, $oldStatus));
+            }
+        }
     }
 }

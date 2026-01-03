@@ -187,10 +187,16 @@ Route::middleware('auth:sanctum')->group(function () {
             
             // Income Management
             Route::apiResource('incomes', \App\Http\Controllers\IncomeController::class);
-            
+
             // Advance Payments (Khata)
-            Route::apiResource('advance-payments', AdvancePaymentController::class);
-            Route::get('/advance-payments/monthly-summary', [AdvancePaymentController::class, 'monthlySummary']);
+            Route::apiResource('advance-payments', \App\Http\Controllers\AdvancePaymentController::class);
+            Route::post('/advance-payments/{id}/approve', [\App\Http\Controllers\AdvancePaymentController::class, 'approve']);
+            Route::post('/advance-payments/{id}/mark-as-paid', [\App\Http\Controllers\AdvancePaymentController::class, 'markAsPaid']);
+            Route::get('/advance-payments/user/{userId}/summary', [\App\Http\Controllers\AdvancePaymentController::class, 'getUserSummary']);
+
+            // Team Member Aliases (for client portal)
+            Route::apiResource('team-member-aliases', \App\Http\Controllers\TeamMemberAliasController::class);
+            Route::get('/team-member-aliases/client/{clientId}/teams', [\App\Http\Controllers\TeamMemberAliasController::class, 'getAvailableTeams']);
 
             // Vendor Management
             Route::apiResource('vendors', VendorController::class);
@@ -261,8 +267,12 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::middleware(['auth:sanctum'])->prefix('client-portal')->group(function () {
             Route::get('/dashboard', [ClientPortalController::class, 'dashboard']);
             Route::get('/projects', [ClientPortalController::class, 'projects']);
+            Route::post('/projects', [ClientPortalController::class, 'createProject']);
             Route::get('/projects/{id}', [ClientPortalController::class, 'project']);
+            Route::put('/projects/{id}', [ClientPortalController::class, 'updateProject']);
             Route::get('/tasks', [ClientPortalController::class, 'tasks']);
+            Route::post('/tasks', [ClientPortalController::class, 'createTask']);
+            Route::put('/tasks/{id}', [ClientPortalController::class, 'updateTask']);
             Route::get('/payments', [ClientPortalController::class, 'payments']);
             Route::get('/requirements', [ClientPortalController::class, 'requirements']);
             Route::post('/requirements', [ClientPortalController::class, 'createRequirement']);

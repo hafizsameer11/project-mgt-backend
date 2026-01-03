@@ -106,9 +106,10 @@ class DashboardService
             ->whereYear('payment_date', $currentYear)
             ->sum('amount');
 
-        // Advance payments (Khata)
+        // Advance payments (khata) - count approved and paid
         $advancePayments = \App\Models\AdvancePayment::whereMonth('payment_date', $currentMonth)
             ->whereYear('payment_date', $currentYear)
+            ->whereIn('status', ['approved', 'paid'])
             ->sum('amount');
 
         $totalActualExpenses = $regularExpenses + $developerPayments + $pmPayments + $bdPayments + $vendorPayments + $advancePayments;

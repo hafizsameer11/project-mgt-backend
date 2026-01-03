@@ -13,20 +13,20 @@ return new class extends Migration
     {
         Schema::create('advance_payments', function (Blueprint $table) {
             $table->id();
-            $table->string('advance_no')->unique();
             $table->foreignId('user_id')->constrained('users')->onDelete('cascade');
+            $table->decimal('monthly_salary', 15, 2)->default(0)->comment('Monthly salary/allowance for the team member');
             $table->decimal('amount', 15, 2);
             $table->string('currency', 10)->default('PKR');
             $table->date('payment_date');
-            $table->string('payment_method')->nullable(); // cash, bank_transfer, etc.
-            $table->decimal('monthly_salary', 15, 2)->nullable(); // Optional: to track total monthly salary
             $table->text('description')->nullable();
+            $table->enum('status', ['pending', 'approved', 'paid'])->default('pending');
+            $table->foreignId('approved_by')->nullable()->constrained('users')->onDelete('set null');
+            $table->timestamp('approved_at')->nullable();
             $table->text('notes')->nullable();
-            $table->foreignId('created_by')->constrained('users')->onDelete('cascade');
             $table->timestamps();
             
-            $table->index('user_id');
-            $table->index('payment_date');
+            $table->index(['user_id', 'payment_date']);
+            $table->index('status');
         });
     }
 
